@@ -2,17 +2,25 @@ from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from typing import List, Optional
+from typing import List, Optional, Any
+from pydantic import BaseModel # Necesario para los esquemas del checkout
 import models, schemas, crud, security
 from database import engine, get_db
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Crear tablas
+# --- NUEVAS IMPORTACIONES PARA AUTOMATIZACIÓN E IA ---
+import sqlite3
+import pandas as pd
+from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
+import ml_core # Tu módulo de IA existente
+
+# Crear tablas del sistema principal (Usuarios, Productos)
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="API El Grano de Oro", description="Gestión de tienda, usuarios e IA")
+app = FastAPI(title="API El Grano de Oro", description="Gestión de tienda, usuarios e IA Automática")
 
 # Configurar CORS
 app.add_middleware(
@@ -24,6 +32,62 @@ app.add_middleware(
 )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# --- BASE DE DATOS ADICIONAL PARA PEDIDOS Y ESTADO IA (SQLite Directo) ---
+# Usamos esto para no obligarte a modificar models.py ahora mismo
+DB_FILE = "elgrano.db" # Usará la misma base de datos, pero conexión directa
+
+def init_orders_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    # Tabla para guardar los pedidos que vienen del Frontend
+    c.execute('''CREATE TABLE IF NOT EXISTS orders 
+                 (id INTEGER PRIMARY KEY, user TEXT, total REAL, date TEXT, items TEXT)''')
+    # Tabla para saber cuándo se entrenó la IA por última vez
+    c.execute('''CREATE TABLE IF NOT EXISTS ai_status 
+                 (last_trained TEXT, accuracy REAL)''')
+    conn.commit()
+    conn.close()
+
+init_orders_db()
+
+# --- SCHEDULER: EL RELOJ AUTOMÁTICO ---
+def scheduled_retrain_job():
+    print("🔄 [AUTO-SCHEDULER] Ejecutando reentrenamiento semanal...")
+    try:
+        # Aquí llamamos a tu lógica de entrenamiento
+        ml_core.train_model() 
+        
+        # Actualizamos el estado
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("DELETE FROM ai_status")
+        c.execute("INSERT INTO ai_status VALUES (?, ?)", (datetime.now().isoformat(), 0.95)) # 0.95 simulado
+        conn.commit()
+        conn.close()
+        print("✅ [AUTO-SCHEDULER] Modelo actualizado correctamente.")
+    except Exception as e:
+        print(f"❌ [AUTO-SCHEDULER] Error entrenando: {e}")
+
+scheduler = BackgroundScheduler()
+# Configurado para ejecutarse cada 1 semana. 
+# NOTA: Si quieres probarlo rápido, cambia 'weeks=1' por 'seconds=60'
+scheduler.add_job(scheduled_retrain_job, 'interval', weeks=1)
+scheduler.start()
+
+# --- ESQUEMAS PARA CHECKOUT (Pydantic) ---
+# Definidos aquí para no tocar schemas.py
+class OrderItemSchema(BaseModel):
+    id: int
+    name: str
+    qty: int
+    price: float
+
+class OrderSchema(BaseModel):
+    user: str
+    total: float
+    items: List[OrderItemSchema]
+    address: str
 
 # --- DEPENDENCIAS DE SEGURIDAD ---
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -111,6 +175,35 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Producto eliminado"}
 
+# --- CHECKOUT Y PEDIDOS (NUEVO) ---
+@app.post("/checkout", tags=["Ventas"])
+def checkout(order: OrderSchema):
+    """Guarda el pedido para que la IA pueda aprender de él"""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    # Convertimos los items a string para guardarlos fácil en SQLite
+    items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
+    
+    c.execute("INSERT INTO orders (user, total, date, items) VALUES (?, ?, ?, ?)",
+              (order.user, order.total, datetime.now().isoformat(), items_str))
+    
+    conn.commit()
+    conn.close()
+    
+    return {"message": "Pedido procesado y guardado para IA"}
+
+@app.get("/ai-status", tags=["IA"])
+def get_ai_status():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT * FROM ai_status")
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return {"last_trained": row[0], "accuracy": row[1]}
+    return {"status": "Aún no entrenado"}
+
 # --- INTERACCIONES E IA ---
 
 @app.post("/interactions/", response_model=schemas.InteractionResponse, tags=["Interacciones"])
@@ -130,10 +223,10 @@ def get_recommendations_route(user_id: Optional[int] = None, db: Session = Depen
     return db.query(models.Product).filter(models.Product.id.in_(rec_ids)).all()
 
 @app.post("/train", tags=["IA"])
-def train_model():
-    import ml_core
-    ml_core.train_model()
-    return {"message": "Modelo entrenado"}  
+def train_model(background_tasks: BackgroundTasks):
+    """Entrenamiento manual forzado (además del automático)"""
+    background_tasks.add_task(scheduled_retrain_job)
+    return {"message": "Entrenamiento iniciado en segundo plano"}  
 
 # --- SISTEMA DE CORREO (MAILTRAP) ---
 

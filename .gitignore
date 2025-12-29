@@ -29,3 +29,27 @@ db_data/
 
 # Backend
 backend/__pycache__/
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/elgrano.db
+
+# Node / React
+frontend/node_modules/
+frontend/dist/
+
+# Docker
+.docker_temp/
+
+# Base de Datos Local
+postgres_data/
+
+# Variables de entorno y secretos
+.env
+backend/security.py (¡Cuidado aquí! Si tienes claves secretas, mejor no subirlo)
+
+# Varios
+.DS_Store
+.vscode/
