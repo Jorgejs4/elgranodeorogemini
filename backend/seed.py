@@ -2,7 +2,7 @@ import requests # type: ignore
 import random
 import time
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "https://grano-oro-api.onrender.com"
 
 # --- DATOS: PRODUCTOS (20 Items con Stock variado) ---
 products = [

@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 
-
 // --- CONFIGURACIÓN DE URL ---
 // Esto detectará automáticamente si estás en local o en Render
 const API_BASE_URL = 'https://grano-oro-api.onrender.com';
 
 // --- COMPONENTE DE GRÁFICO PERSONALIZADO (SVG) ---
 const SalesChart = ({ orders }) => {
+  // SEGURIDAD: Evitar que el gráfico rompa la app si no hay pedidos válidos
+  if (!Array.isArray(orders)) return null;
+
   const data = useMemo(() => {
     const days = [];
     const today = new Date();
@@ -16,8 +18,8 @@ const SalesChart = ({ orders }) => {
       const dayStr = d.toLocaleDateString('es-ES', { weekday: 'short' });
       
       const total = orders
-        .filter(o => new Date(o.date).toDateString() === d.toDateString())
-        .reduce((acc, curr) => acc + curr.total, 0);
+        .filter(o => o.date && new Date(o.date).toDateString() === d.toDateString())
+        .reduce((acc, curr) => acc + (curr.total || 0), 0);
       
       days.push({ day: dayStr, val: total });
     }
@@ -59,21 +61,16 @@ function App() {
   const [recommendations, setRecommendations] = useState([]);
   const [cart, setCart] = useState([]);
   const [wishlist, setWishlist] = useState([]); 
-  const [orders, setOrders] = useState(() => {
-    const saved = localStorage.getItem('orders_db');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  useEffect(() => {
-    localStorage.setItem('orders_db', JSON.stringify(orders));
-  }, [orders]);
-  
+  const [orders, setOrders] = useState([]); // Eliminado el localStorage de orders para evitar conflictos
   const [view, setView] = useState("catalog"); 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [showAuth, setShowAuth] = useState(false); 
   const [isCartOpen, setIsCartOpen] = useState(false); 
   const [isWishlistOpen, setIsWishlistOpen] = useState(false); 
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')));
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
 
@@ -96,8 +93,8 @@ function App() {
         const recData = resRec.ok ? await resRec.json() : [];
 
         if (isMounted) {
-            setProducts(data);
-            setRecommendations(recData);
+            setProducts(Array.isArray(data) ? data : []);
+            setRecommendations(Array.isArray(recData) ? recData : []);
         }
       } catch (err) { console.error("Error cargando productos:", err); }
     };
@@ -114,7 +111,7 @@ function App() {
     }
   }, [view, user]);
 
-useEffect(() => {
+  useEffect(() => {
     if (user && user.role === 'admin' && view === 'admin') {
       const fetchOrders = async () => {
         try {
@@ -206,26 +203,23 @@ useEffect(() => {
     if(cart.length === 0) return;
 
     try {
-        // --- NUEVO: Enviar pedido al Backend para que reste stock ---
         const response = await fetch(`${API_BASE_URL}/checkout`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${user.token}` // Si usas tokens
+                'Authorization': `Bearer ${user.token}`
             },
             body: JSON.stringify({
-                user_id: user.id,
-                items: cart.map(item => ({ product_id: item.id, quantity: item.qty })),
-                total: cart.reduce((acc, item) => acc + item.price * item.qty, 0),
+                user: user.email, // Enviamos el email como "user" para coincidir con tu backend original
+                items: cart.map(item => ({ id: item.id, name: item.name, qty: item.qty, price: item.price })),
+                total: cartTotal,
                 address: `${shipping.address}, ${shipping.city}, ${shipping.zip}`
             })
         });
 
         if (!response.ok) throw new Error("Error al procesar el stock en el servidor");
 
-        // Si la API responde OK, actualizamos lo visual
         const data = await response.json();
-        setOrders(prev => [data, ...prev]);
         
         alert(`🎉 ¡Pedido confirmado y stock actualizado!`);
         setCart([]);
@@ -241,7 +235,7 @@ useEffect(() => {
         console.error(err);
         alert("Hubo un problema con la base de datos de stock.");
     }
-};
+  };
 
   const handleShipOrder = async (orderId) => {
     try {
@@ -253,25 +247,26 @@ useEffect(() => {
         });
         
         if (res.ok) {
-            // Si el servidor confirma, lo quitamos de la vista actual
             setOrders(prev => prev.filter(o => o.id !== orderId));
             alert("📦 Pedido marcado como enviado");
         }
     } catch (error) {
         console.error("Error al enviar pedido:", error);
     }
-};
+  };
 
   const calculateSales = (period) => {
       const now = new Date();
+      if (!Array.isArray(orders)) return 0;
       return orders.filter(o => {
+          if (!o.date) return false;
           const orderDate = new Date(o.date);
           if (period === 'day') return orderDate.toDateString() === now.toDateString();
           if (period === 'week') { const w = new Date(); w.setDate(w.getDate()-7); return orderDate > w; }
           if (period === 'month') return orderDate.getMonth() === now.getMonth() && orderDate.getFullYear() === now.getFullYear();
           if (period === 'year') return orderDate.getFullYear() === now.getFullYear();
           return false;
-      }).reduce((acc, curr) => acc + curr.total, 0);
+      }).reduce((acc, curr) => acc + (curr.total || 0), 0);
   };
 
   const filteredProducts = products
@@ -306,7 +301,11 @@ useEffect(() => {
                  {cart.length > 0 && <span className="absolute top-0 right-0 bg-amber-600 text-white text-xs font-bold w-4 h-4 flex items-center justify-center rounded-full animate-bounce">{cart.reduce((a,c)=>a+c.qty,0)}</span>}
                </div>
                {user ? (
-                 <button onClick={() => {setUser(null); setView("catalog")}} className="text-xs font-bold text-zinc-400 hover:text-amber-500 ml-4 uppercase tracking-wider transition border-l border-zinc-700 pl-4">CERRAR SESIÓN</button>
+                 <button onClick={() => {
+                     setUser(null); 
+                     localStorage.removeItem('user'); 
+                     setView("catalog");
+                 }} className="text-xs font-bold text-zinc-400 hover:text-amber-500 ml-4 uppercase tracking-wider transition border-l border-zinc-700 pl-4">CERRAR SESIÓN</button>
                ) : (
                  <button onClick={() => setShowAuth(true)} className="bg-amber-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-amber-500 transition shadow-lg">Entrar</button>
                )}
@@ -425,37 +424,73 @@ useEffect(() => {
         )}
 
         {view === "admin" && (
-  <div className="animate-fade-in max-w-7xl mx-auto px-4 mt-10">
-    <h2 className="text-3xl font-serif font-bold text-white mb-8 border-b border-zinc-800 pb-4">Dashboard Admin</h2>
-    
-    {/* Verificamos si orders es una lista válida */}
-    {!Array.isArray(orders) || orders.length === 0 ? (
-       <div className="bg-zinc-900 p-10 rounded-2xl border border-zinc-800 text-center">
-          <p className="text-zinc-500 italic">No hay pedidos pendientes en la base de datos.</p>
-       </div>
-    ) : (
-       <>
-          {/* Aquí dentro va tu SalesChart y la lista de pedidos actual */}
-          <div className="grid lg:grid-cols-3 gap-8 mb-8">
-              <div className="lg:col-span-2">
-                  <SalesChart orders={orders} />
-              </div>
-              {/* Resto de tus estadísticas... */}
+          <div className="animate-fade-in max-w-7xl mx-auto px-4 mt-10">
+            <h2 className="text-3xl font-serif font-bold text-white mb-8 border-b border-zinc-800 pb-4">Dashboard Admin</h2>
+            
+            {!Array.isArray(orders) || orders.length === 0 ? (
+               <div className="bg-zinc-900 p-10 rounded-2xl border border-zinc-800 text-center">
+                  <p className="text-zinc-500 italic">No hay pedidos en la base de datos.</p>
+               </div>
+            ) : (
+               <>
+                  <div className="grid lg:grid-cols-3 gap-8 mb-8">
+                      <div className="lg:col-span-2">
+                          <SalesChart orders={orders} />
+                      </div>
+                      <div className="grid grid-rows-3 gap-4">
+                          <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 flex flex-col justify-center">
+                              <h4 className="text-zinc-400 text-sm font-bold uppercase tracking-wider mb-2">Ventas Hoy</h4>
+                              <p className="text-3xl font-serif text-white">{calculateSales('day').toFixed(2)}€</p>
+                          </div>
+                          <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 flex flex-col justify-center">
+                              <h4 className="text-zinc-400 text-sm font-bold uppercase tracking-wider mb-2">Ventas Semana</h4>
+                              <p className="text-3xl font-serif text-white">{calculateSales('week').toFixed(2)}€</p>
+                          </div>
+                          <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 flex flex-col justify-center">
+                              <h4 className="text-zinc-400 text-sm font-bold uppercase tracking-wider mb-2">Ventas Mes</h4>
+                              <p className="text-3xl font-serif text-amber-500">{calculateSales('month').toFixed(2)}€</p>
+                          </div>
+                      </div>
+                  </div>
+                  
+                  <div className="grid lg:grid-cols-2 gap-8">
+                      <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
+                         <h3 className="text-xl font-bold mb-4 text-amber-500">Pedidos a Enviar</h3>
+                         <div className="space-y-4">
+                           {orders.filter(o => o.status === 'pending').map(order => (
+                              <div key={order.id} className="p-4 bg-black/40 rounded-xl border border-zinc-800 flex justify-between items-center">
+                                 <div>
+                                    <p className="text-white font-bold">Pedido #{order.id}</p>
+                                    <p className="text-sm text-zinc-400">{order.items || order.items_summary}</p>
+                                    <p className="text-xs text-zinc-500 italic">{order.user} - {order.address}</p>
+                                 </div>
+                                 <button 
+                                    onClick={() => handleShipOrder(order.id)}
+                                    className="bg-amber-600 text-black px-4 py-2 rounded-lg font-bold hover:bg-amber-500 transition"
+                                 >
+                                    Completar
+                                 </button>
+                              </div>
+                           ))}
+                           {orders.filter(o => o.status === 'pending').length === 0 && <p className="text-zinc-500 text-sm">Todo enviado.</p>}
+                         </div>
+                      </div>
+                      <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
+                         <h3 className="text-xl font-bold mb-4 text-white">Añadir Producto</h3>
+                         <form onSubmit={handleCreateProduct} className="space-y-4">
+                             <input name="name" className="premium-input w-full" placeholder="Nombre" required />
+                             <input name="category" className="premium-input w-full" placeholder="Categoría" required />
+                             <input name="price" type="number" step="0.01" className="premium-input w-full" placeholder="Precio (€)" required />
+                             <input name="stock" type="number" className="premium-input w-full" placeholder="Stock Inicial" required />
+                             <input name="image_url" className="premium-input w-full" placeholder="URL de Imagen" />
+                             <button type="submit" className="w-full bg-zinc-800 text-white font-bold py-3 rounded-xl border border-zinc-700 hover:bg-zinc-700 transition">Añadir</button>
+                         </form>
+                      </div>
+                  </div>
+               </>
+            )}
           </div>
-          
-          {/* Al filtrar para enviar, también usamos validación */}
-          <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
-             <h3 className="text-xl font-bold mb-4 text-amber-500">Pedidos a Enviar</h3>
-             {orders.map(order => (
-                <div key={order.id} className="...">
-                   {/* ... contenido del pedido ... */}
-                </div>
-             ))}
-          </div>
-       </>
-    )}
-  </div>
-)}
+        )}
 
         {view === "catalog" && (
           <>
@@ -466,7 +501,7 @@ useEffect(() => {
                         <select className="premium-input" onChange={e=>setCategory(e.target.value)}><option value="all">Todas</option><option value="Café en Grano">Grano</option><option value="Café Molido">Molido</option><option value="Accesorios">Accesorios</option></select>
                     </div>
                     <h2 className="text-2xl font-serif text-white mb-6">Resultados para "{search}"</h2>
-                    {filteredProducts.length === 0 ? <p className="text-zinc-500">Sin resultados.</p> : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">{filteredProducts.map(p => <ProductCard key={p.id} product={p} onClick={() => handleProductClick(p)} onAdd={addToCart} onBuy={buyNow} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} />)}</div>}
+                    {filteredProducts.length === 0 ? <p className="text-zinc-500">Sin resultados.</p> : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">{filteredProducts.map(p => <ProductCard key={p.id} product={p} onClick={() => handleProductClick(p)} onAdd={addToCart} onBuy={buyNow} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} isAdmin={user?.role === 'admin'} onDelete={handleDeleteProduct} />)}</div>}
                 </div>
             ) : (
                 <>
@@ -491,12 +526,12 @@ useEffect(() => {
                                     <div className="h-px bg-amber-900/30 flex-1"></div>
                                 </h2>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-                                    {recommendations.map(p => <ProductCard key={p.id} product={p} onClick={() => handleProductClick(p)} onAdd={addToCart} onBuy={buyNow} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} recommended={true} />)}
+                                    {recommendations.map(p => <ProductCard key={p.id} product={p} onClick={() => handleProductClick(p)} onAdd={addToCart} onBuy={buyNow} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} recommended={true} isAdmin={user?.role === 'admin'} onDelete={handleDeleteProduct} />)}
                                 </div>
                             </section>
                         )}
                         
-                        <section><h2 className="text-2xl font-serif text-amber-500 mb-6 flex items-center gap-4 italic">Nuestra colección completa <div className="h-px bg-zinc-800 flex-1"></div></h2><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">{filteredProducts.map(p => <ProductCard key={p.id} product={p} onClick={() => handleProductClick(p)} onAdd={addToCart} onBuy={buyNow} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} />)}</div></section>
+                        <section><h2 className="text-2xl font-serif text-amber-500 mb-6 flex items-center gap-4 italic">Nuestra colección completa <div className="h-px bg-zinc-800 flex-1"></div></h2><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">{filteredProducts.map(p => <ProductCard key={p.id} product={p} onClick={() => handleProductClick(p)} onAdd={addToCart} onBuy={buyNow} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} isAdmin={user?.role === 'admin'} onDelete={handleDeleteProduct} />)}</div></section>
                     </div>
                 </>
             )}
@@ -509,15 +544,15 @@ useEffect(() => {
           <div className="absolute inset-0 bg-black/60" onClick={()=>setIsCartOpen(false)}></div>
           <div className="absolute right-0 top-0 h-full w-full max-w-md bg-zinc-950 border-l border-zinc-800 p-8 flex flex-col">
             <h2 className="text-2xl font-serif text-amber-500 mb-8 flex justify-between">Tu Selección <button onClick={()=>setIsCartOpen(false)} className="text-zinc-500">✕</button></h2>
-            <div className="flex-1 overflow-y-auto space-y-4">
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
                 {cart.map(i => (
                     <div key={i.id} className="flex justify-between mb-4 bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 items-center">
-                        <div><h4 className="font-bold text-white">{i.name}</h4><p className="text-amber-500 text-sm">{i.qty} x {i.price}€</p></div>
-                        <div className="flex gap-2"><button onClick={()=>removeFromCart(i)} className="text-zinc-400 hover:text-white">-</button><button onClick={()=>addToCart(i)} className="text-zinc-400 hover:text-white">+</button></div>
+                        <div><h4 className="font-bold text-white max-w-[180px] truncate">{i.name}</h4><p className="text-amber-500 text-sm">{i.qty} x {i.price}€</p></div>
+                        <div className="flex gap-2 bg-zinc-950 rounded-lg p-1 border border-zinc-800"><button onClick={()=>removeFromCart(i)} className="text-zinc-400 hover:text-white px-2">-</button><span className="text-white px-2">{i.qty}</span><button onClick={()=>addToCart(i)} className="text-zinc-400 hover:text-white px-2">+</button></div>
                     </div>
                 ))}
             </div>
-            {cart.length > 0 && <button onClick={handleGoToCheckout} className="w-full bg-amber-600 text-black font-bold py-4 rounded-xl mt-8">Finalizar Pedido ({cartTotal.toFixed(2)}€)</button>}
+            {cart.length > 0 && <button onClick={handleGoToCheckout} className="w-full bg-amber-600 text-black font-bold py-4 rounded-xl mt-8 hover:bg-amber-500 transition shadow-lg">Finalizar Pedido ({cartTotal.toFixed(2)}€)</button>}
           </div>
       </div>
 
@@ -525,13 +560,13 @@ useEffect(() => {
           <div className="absolute inset-0 bg-black/60" onClick={()=>setIsWishlistOpen(false)}></div>
           <div className="absolute right-0 top-0 h-full w-full max-w-md bg-zinc-950 border-l border-zinc-800 p-8 flex flex-col">
               <h2 className="text-2xl font-serif text-amber-500 mb-8 flex justify-between">Favoritos <button onClick={()=>setIsWishlistOpen(false)} className="text-zinc-500">✕</button></h2>
-              <div className="flex-1 overflow-y-auto space-y-4">
-                {wishlist.length === 0 && <p className="text-zinc-500 text-center">Vacío.</p>}
+              <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+                {wishlist.length === 0 && <p className="text-zinc-500 text-center">Aún no hay favoritos.</p>}
                 {wishlist.map(i => (
                     <div key={i.id} className="flex gap-3 bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 items-center">
                         <img src={i.image_url || "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?q=80&w=100"} alt={i.name} className="w-16 h-16 rounded-lg object-cover grayscale"/>
                         <div className="flex-1"><h4 className="font-bold text-sm text-white line-clamp-1">{i.name}</h4><p className="text-amber-500 text-sm">{i.price}€</p></div>
-                        <button onClick={()=>moveToCartFromWishlist(i)} className="bg-amber-600 text-black px-3 py-1 rounded text-xs font-bold">🛒</button>
+                        <button onClick={()=>moveToCartFromWishlist(i)} className="bg-amber-600 text-black px-3 py-1 rounded text-xs font-bold hover:bg-amber-500 transition">🛒</button>
                     </div>
                 ))}
               </div>
@@ -545,23 +580,35 @@ useEffect(() => {
 }
 
 // --- COMPONENTS ---
-function ProductCard({ product, onClick, onAdd, onBuy, recommended, isLiked, onLike }) {
+function ProductCard({ product, onClick, onAdd, onBuy, recommended, isLiked, onLike, isAdmin, onDelete }) {
     return (
-        <div className={`group bg-zinc-900/40 rounded-3xl overflow-hidden border transition-all duration-500 hover:bg-zinc-900/80 ${recommended ? 'border-amber-500/30' : 'border-zinc-800'}`}>
+        <div className={`group bg-zinc-900/40 rounded-3xl overflow-hidden border transition-all duration-500 hover:bg-zinc-900/80 ${recommended ? 'border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]' : 'border-zinc-800'}`}>
             <div className="relative h-72 overflow-hidden cursor-pointer" onClick={onClick}>
                 <img src={product.image_url || "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?q=80&w=400"} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-1000 group-hover:scale-110" alt={product.name} />
                 <button onClick={(e) => { e.stopPropagation(); onLike(product); }} className="absolute top-4 right-4 text-2xl drop-shadow-lg transition hover:scale-125 z-20">
                     {isLiked ? <span className="text-amber-500">♥</span> : <span className="text-zinc-300">♡</span>}
                 </button>
+                {isAdmin && (
+                  <button onClick={(e) => { e.stopPropagation(); onDelete(product.id); }} className="absolute top-4 left-4 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded z-20 hover:bg-red-500 transition">
+                     Borrar
+                  </button>
+                )}
                 <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black p-6">
-                    <h3 className="text-xl font-bold text-white mb-1">{product.name}</h3>
-                    <span className="text-amber-400 font-bold">{product.price}€</span>
+                    <div className="flex justify-between items-end">
+                      <div>
+                        <h3 className="text-xl font-bold text-white mb-1 truncate max-w-[150px]">{product.name}</h3>
+                        <span className="text-zinc-400 text-xs uppercase tracking-wider">Stock: {product.stock}</span>
+                      </div>
+                      <span className="text-amber-400 font-bold text-lg">{product.price}€</span>
+                    </div>
                 </div>
             </div>
             <div className="p-6">
                 <div className="flex gap-3">
-                   <button onClick={(e)=>{ e.stopPropagation(); onAdd(product); }} className="flex-1 bg-zinc-800 text-white py-3 rounded-xl font-bold text-sm hover:bg-zinc-700 transition">Añadir</button>
-                   <button onClick={(e)=>{ e.stopPropagation(); onBuy(product); }} className="flex-1 bg-amber-600 text-black py-3 rounded-xl font-bold text-sm hover:bg-amber-500 transition">Comprar</button>
+                   <button onClick={(e)=>{ e.stopPropagation(); onAdd(product); }} disabled={product.stock <= 0} className={`flex-1 py-3 rounded-xl font-bold text-sm transition ${product.stock > 0 ? 'bg-zinc-800 text-white hover:bg-zinc-700' : 'bg-zinc-900 text-zinc-600 cursor-not-allowed border border-zinc-800'}`}>
+                     {product.stock > 0 ? 'Añadir' : 'Agotado'}
+                   </button>
+                   <button onClick={(e)=>{ e.stopPropagation(); onBuy(product); }} disabled={product.stock <= 0} className={`flex-1 py-3 rounded-xl font-bold text-sm transition ${product.stock > 0 ? 'bg-amber-600 text-black hover:bg-amber-500' : 'bg-zinc-900 text-zinc-600 cursor-not-allowed border border-zinc-800'}`}>Comprar</button>
                 </div>
             </div>
         </div>
@@ -595,12 +642,12 @@ function AuthModal({ onClose, onLogin }) {
                 if(!res.ok) throw new Error("Credenciales inválidas");
                 
                 const data = await res.json();
-                const userRole = (email === 'admin@elgrano.com') ? 'admin' : (data.role || 'client');
-                onLogin({ email: email, id: data.user_id, role: userRole, token: data.access_token });
-               
+                
+                // Lee el rol real de la respuesta de la API (por defecto 'client' si no existe)
+                const userRole = data.role || 'client'; 
+                
                 const loggedUser = { email: email, id: data.user_id, role: userRole, token: data.access_token };
 
-                // Guardamos en el navegador para que no se borre al refrescar
                 localStorage.setItem('user', JSON.stringify(loggedUser));
 
                 onLogin(loggedUser);
@@ -612,14 +659,14 @@ function AuthModal({ onClose, onLogin }) {
             <div className="absolute inset-0 bg-black/60" onClick={onClose}></div>
             <div className="relative bg-zinc-900 p-10 rounded-3xl border border-zinc-700 w-full max-w-md shadow-2xl">
                 <h2 className="text-3xl font-serif text-amber-500 mb-6 text-center italic font-bold">{isReg?"Crear Cuenta":"Bienvenido"}</h2>
-                {error && <p className="text-red-400 text-center mb-4">{error}</p>}
+                {error && <p className="text-red-400 text-center mb-4 text-sm bg-red-900/20 p-3 rounded-lg border border-red-900/50">{error}</p>}
                 <form onSubmit={submit} className="space-y-4">
                     <input className="premium-input w-full" type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
                     <input className="premium-input w-full" type="password" placeholder="Contraseña" value={password} onChange={e=>setPassword(e.target.value)} required />
-                    <button className="w-full bg-amber-600 text-black font-bold py-4 rounded-xl mt-4">{isReg?"Registrar":"Acceder"}</button>
+                    <button className="w-full bg-amber-600 text-black font-bold py-4 rounded-xl mt-4 hover:bg-amber-500 transition shadow-lg">{isReg?"Registrar":"Acceder"}</button>
                 </form>
-                <div className="mt-6 text-center text-zinc-400 text-sm cursor-pointer hover:text-white" onClick={()=>setIsReg(!isReg)}>{isReg?"¿Ya tienes cuenta?":"¿Crear cuenta?"}</div>
-                <button onClick={onClose} className="absolute top-4 right-4 text-zinc-500">✕</button>
+                <div className="mt-6 text-center text-zinc-400 text-sm cursor-pointer hover:text-white transition" onClick={()=>setIsReg(!isReg)}>{isReg?"¿Ya tienes cuenta?":"¿Crear cuenta?"}</div>
+                <button onClick={onClose} className="absolute top-4 right-4 text-zinc-500 hover:text-white transition text-xl">✕</button>
             </div>
         </div>
     )
