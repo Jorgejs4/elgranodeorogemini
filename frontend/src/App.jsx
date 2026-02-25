@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 
+
 // --- CONFIGURACIÓN DE URL ---
 // Esto detectará automáticamente si estás en local o en Render
 const API_BASE_URL = 'https://grano-oro-api.onrender.com';
@@ -72,7 +73,7 @@ function App() {
   const [showAuth, setShowAuth] = useState(false); 
   const [isCartOpen, setIsCartOpen] = useState(false); 
   const [isWishlistOpen, setIsWishlistOpen] = useState(false); 
-  const [user, setUser] = useState(null); 
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')));
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
 
@@ -112,6 +113,25 @@ function App() {
           .catch(err => console.error(err));
     }
   }, [view, user]);
+
+useEffect(() => {
+    if (user && user.role === 'admin' && view === 'admin') {
+      const fetchOrders = async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/admin/orders`, {
+            headers: { 'Authorization': `Bearer ${user.token}` }
+          });
+          const data = await res.json();
+          // Validamos que 'data' sea un Array antes de guardarlo
+          setOrders(Array.isArray(data) ? data : []);
+        } catch (err) { 
+          console.error("Error cargando pedidos:", err);
+          setOrders([]); // Si hay error, ponemos lista vacía para que no se ponga negra la pantalla
+        }
+      };
+      fetchOrders();
+    }
+  }, [user, view]);
 
   const handleProductClick = (product) => { setSelectedProduct(product); setView("product-detail"); window.scrollTo(0, 0); };
   const addToCart = (product) => {
@@ -182,28 +202,65 @@ function App() {
   };
 
   const processPayment = async (e) => {
-      e.preventDefault();
-      if(cart.length === 0) return;
-      const cartTotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
-      const newOrder = {
-          id: Date.now(),
-          user: user.email,
-          date: new Date().toISOString(),
-          items: [...cart],
-          total: cartTotal,
-          address: `${shipping.address}, ${shipping.city}, ${shipping.zip}`,
-          status: 'pending'
-      };
-      setOrders(prev => [newOrder, ...prev]);
-      alert(`🎉 ¡Pedido confirmado! Gracias por confiar en nosotros.`);
-      setCart([]);
-      setView("catalog");
-      window.scrollTo(0,0);
-  };
+    e.preventDefault();
+    if(cart.length === 0) return;
 
-  const handleShipOrder = (orderId) => {
-      setOrders(orders.map(o => o.id === orderId ? {...o, status: 'shipped'} : o));
-  };
+    try {
+        // --- NUEVO: Enviar pedido al Backend para que reste stock ---
+        const response = await fetch(`${API_BASE_URL}/checkout`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${user.token}` // Si usas tokens
+            },
+            body: JSON.stringify({
+                user_id: user.id,
+                items: cart.map(item => ({ product_id: item.id, quantity: item.qty })),
+                total: cart.reduce((acc, item) => acc + item.price * item.qty, 0),
+                address: `${shipping.address}, ${shipping.city}, ${shipping.zip}`
+            })
+        });
+
+        if (!response.ok) throw new Error("Error al procesar el stock en el servidor");
+
+        // Si la API responde OK, actualizamos lo visual
+        const data = await response.json();
+        setOrders(prev => [data, ...prev]);
+        
+        alert(`🎉 ¡Pedido confirmado y stock actualizado!`);
+        setCart([]);
+        setView("catalog");
+        window.scrollTo(0,0);
+        
+        // Recargar productos para ver el stock nuevo
+        const resProd = await fetch(`${API_BASE_URL}/products/`);
+        const updatedProds = await resProd.json();
+        setProducts(updatedProds);
+
+    } catch (err) {
+        console.error(err);
+        alert("Hubo un problema con la base de datos de stock.");
+    }
+};
+
+  const handleShipOrder = async (orderId) => {
+    try {
+        const res = await fetch(`${API_BASE_URL}/admin/orders/${orderId}/ship`, {
+            method: 'PUT',
+            headers: { 
+                'Authorization': `Bearer ${user.token}` 
+            }
+        });
+        
+        if (res.ok) {
+            // Si el servidor confirma, lo quitamos de la vista actual
+            setOrders(prev => prev.filter(o => o.id !== orderId));
+            alert("📦 Pedido marcado como enviado");
+        }
+    } catch (error) {
+        console.error("Error al enviar pedido:", error);
+    }
+};
 
   const calculateSales = (period) => {
       const now = new Date();
@@ -368,49 +425,37 @@ function App() {
         )}
 
         {view === "admin" && (
-           <div className="animate-fade-in max-w-7xl mx-auto px-4 mt-10">
-              <h2 className="text-3xl font-serif font-bold text-white mb-8 border-b border-zinc-800 pb-4">Dashboard Admin</h2>
-              <div className="grid lg:grid-cols-3 gap-8 mb-8">
-                  <div className="lg:col-span-2">
-                      <SalesChart orders={orders} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 h-full">
-                      <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 flex flex-col justify-center"><p className="text-zinc-400 text-xs uppercase tracking-wider mb-2">Ventas Hoy</p><p className="text-3xl font-bold text-amber-500">{calculateSales('day').toFixed(2)}€</p></div>
-                      <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 flex flex-col justify-center"><p className="text-zinc-400 text-xs uppercase tracking-wider mb-2">Semana</p><p className="text-2xl font-bold text-white">{calculateSales('week').toFixed(2)}€</p></div>
-                      <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 flex flex-col justify-center"><p className="text-zinc-400 text-xs uppercase tracking-wider mb-2">Mes</p><p className="text-2xl font-bold text-white">{calculateSales('month').toFixed(2)}€</p></div>
-                      <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 flex flex-col justify-center"><p className="text-zinc-400 text-xs uppercase tracking-wider mb-2">Pendientes</p><p className="text-2xl font-bold text-red-400">{orders.filter(o=>o.status==='pending').length}</p></div>
-                  </div>
+  <div className="animate-fade-in max-w-7xl mx-auto px-4 mt-10">
+    <h2 className="text-3xl font-serif font-bold text-white mb-8 border-b border-zinc-800 pb-4">Dashboard Admin</h2>
+    
+    {/* Verificamos si orders es una lista válida */}
+    {!Array.isArray(orders) || orders.length === 0 ? (
+       <div className="bg-zinc-900 p-10 rounded-2xl border border-zinc-800 text-center">
+          <p className="text-zinc-500 italic">No hay pedidos pendientes en la base de datos.</p>
+       </div>
+    ) : (
+       <>
+          {/* Aquí dentro va tu SalesChart y la lista de pedidos actual */}
+          <div className="grid lg:grid-cols-3 gap-8 mb-8">
+              <div className="lg:col-span-2">
+                  <SalesChart orders={orders} />
               </div>
-
-              <div className="grid lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-1 space-y-8">
-                    <form onSubmit={handleCreateProduct} className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
-                         <h3 className="text-xl font-bold mb-4 text-amber-500">Nuevo Producto</h3>
-                         <div className="space-y-3">
-                            <input name="name" placeholder="Nombre" required className="premium-input w-full" />
-                            <div className="flex gap-2"><input name="price" placeholder="Precio" className="premium-input w-1/2" /><input name="stock" placeholder="Stock" className="premium-input w-1/2" /></div>
-                            <input name="category" placeholder="Categoría" required className="premium-input w-full" />
-                            <input name="image_url" placeholder="URL Imagen" className="premium-input w-full" />
-                            <textarea name="description" placeholder="Descripción" className="premium-input w-full h-24" required />
-                            <button type="submit" className="w-full bg-zinc-100 text-black font-bold py-3 rounded-xl hover:bg-amber-400 transition">+ Guardar</button>
-                         </div>
-                    </form>
+              {/* Resto de tus estadísticas... */}
+          </div>
+          
+          {/* Al filtrar para enviar, también usamos validación */}
+          <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
+             <h3 className="text-xl font-bold mb-4 text-amber-500">Pedidos a Enviar</h3>
+             {orders.map(order => (
+                <div key={order.id} className="...">
+                   {/* ... contenido del pedido ... */}
                 </div>
-                <div className="lg:col-span-2 bg-zinc-900 p-6 rounded-2xl border border-zinc-800 h-fit">
-                    <h3 className="text-xl font-bold mb-4 text-white">Inventario</h3>
-                    <div className="grid grid-cols-1 gap-3 max-h-[800px] overflow-y-auto pr-2">
-                        {products.map(p => (
-                            <div key={p.id} className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex gap-4 items-center hover:border-amber-500/50 transition">
-                                <img src={p.image_url || "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?q=80&w=200"} className="w-16 h-16 object-cover rounded-lg border border-zinc-700"/>
-                                <div className="flex-1 min-w-0"><h4 className="font-bold text-white truncate">{p.name}</h4><div className="flex items-center gap-3 mt-1 text-sm"><span className="text-amber-500 font-mono">{p.price}€</span><span className={`px-2 py-0.5 rounded text-xs font-bold border ${p.stock < 5 ? 'bg-red-900/20 text-red-500 border-red-900' : 'bg-emerald-900/20 text-emerald-500 border-emerald-900'}`}>Stock: {p.stock}</span></div></div>
-                                <button onClick={() => handleDeleteProduct(p.id)} className="text-red-400 border border-red-900/50 px-3 py-2 rounded-lg hover:bg-red-900/20 text-sm font-medium">Eliminar</button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-              </div>
-           </div>
-        )}
+             ))}
+          </div>
+       </>
+    )}
+  </div>
+)}
 
         {view === "catalog" && (
           <>
@@ -552,6 +597,13 @@ function AuthModal({ onClose, onLogin }) {
                 const data = await res.json();
                 const userRole = (email === 'admin@elgrano.com') ? 'admin' : (data.role || 'client');
                 onLogin({ email: email, id: data.user_id, role: userRole, token: data.access_token });
+               
+                const loggedUser = { email: email, id: data.user_id, role: userRole, token: data.access_token };
+
+                // Guardamos en el navegador para que no se borre al refrescar
+                localStorage.setItem('user', JSON.stringify(loggedUser));
+
+                onLogin(loggedUser);
             }
         } catch(err) { setError(err.message); }
     };

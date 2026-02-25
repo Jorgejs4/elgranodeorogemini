@@ -46,3 +46,16 @@ class Interaction(Base):
 
     user = relationship("User", back_populates="interactions")
     product = relationship("Product", back_populates="interactions")
+
+# --- 4. Tabla de Pedidos (Añadir al final de models.py) ---
+class Order(Base):
+    __tablename__ = "orders"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_email = Column(String, index=True)
+    total = Column(Float, nullable=False)
+    date = Column(DateTime(timezone=True), server_default=func.now())
+    items_summary = Column(String)  # Guardaremos "2x Café, 1x Prensa"
+    address = Column(String)
+    status = Column(String, default="pending") # pending, shipped

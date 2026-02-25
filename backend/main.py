@@ -11,7 +11,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 # --- NUEVAS IMPORTACIONES PARA AUTOMATIZACIÓN E IA ---
-import sqlite3
+
 import pandas as pd
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -35,21 +35,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # --- BASE DE DATOS ADICIONAL PARA PEDIDOS Y ESTADO IA (SQLite Directo) ---
 # Usamos esto para no obligarte a modificar models.py ahora mismo
-DB_FILE = "elgrano.db" # Usará la misma base de datos, pero conexión directa
 
-def init_orders_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    # Tabla para guardar los pedidos que vienen del Frontend
-    c.execute('''CREATE TABLE IF NOT EXISTS orders 
-                 (id INTEGER PRIMARY KEY, user TEXT, total REAL, date TEXT, items TEXT)''')
-    # Tabla para saber cuándo se entrenó la IA por última vez
-    c.execute('''CREATE TABLE IF NOT EXISTS ai_status 
-                 (last_trained TEXT, accuracy REAL)''')
-    conn.commit()
-    conn.close()
 
-init_orders_db()
+
 
 # --- SCHEDULER: EL RELOJ AUTOMÁTICO ---
 def scheduled_retrain_job():
@@ -59,12 +47,10 @@ def scheduled_retrain_job():
         ml_core.train_model() 
         
         # Actualizamos el estado
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        c.execute("DELETE FROM ai_status")
-        c.execute("INSERT INTO ai_status VALUES (?, ?)", (datetime.now().isoformat(), 0.95)) # 0.95 simulado
-        conn.commit()
-        conn.close()
+
+
+
+
         print("✅ [AUTO-SCHEDULER] Modelo actualizado correctamente.")
     except Exception as e:
         print(f"❌ [AUTO-SCHEDULER] Error entrenando: {e}")
@@ -177,32 +163,83 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
 
 # --- CHECKOUT Y PEDIDOS (NUEVO) ---
 @app.post("/checkout", tags=["Ventas"])
-def checkout(order: OrderSchema):
-    """Guarda el pedido para que la IA pueda aprender de él"""
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+def checkout(order: OrderSchema, db: Session = Depends(get_db)):
+    """Procesa la venta: Resta stock en PostgreSQL y guarda historial en SQLite"""
     
-    # Convertimos los items a string para guardarlos fácil en SQLite
+    # 1. ACTUALIZAR STOCK EN DB PRINCIPAL (PostgreSQL)
+    for item in order.items:
+        db_product = db.query(models.Product).filter(models.Product.id == item.id).first()
+        
+        if not db_product:
+            raise HTTPException(status_code=404, detail=f"Producto {item.name} no encontrado")
+        
+        if db_product.stock < item.qty:
+            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {item.name}")
+        
+        # Restamos el stock
+        db_product.stock -= item.qty
+    
+    db.commit() # Guardamos los cambios de stock
+
+    # 2. GUARDAR EN EL HISTORIAL DE PEDIDOS (SQLite)
+
+
+    
+    # Guardamos los items, la dirección y un estado "pending"
     items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
     
-    c.execute("INSERT INTO orders (user, total, date, items) VALUES (?, ?, ?, ?)",
-              (order.user, order.total, datetime.now().isoformat(), items_str))
+    # Asegúrate de que la tabla orders tenga la columna 'address' y 'status'
+    # Si te da error, es porque la tabla ya existe sin esas columnas. 
+    # En ese caso, borra el archivo elgrano.db y reinicia Docker.
+
+
+
     
-    conn.commit()
-    conn.close()
+    return {"message": "Venta realizada, stock actualizado y datos guardados para la IA"}
+
+
+@app.get("/admin/orders", tags=["Ventas"])
+def get_admin_orders(admin: models.User = Depends(check_admin)):
+    """Permite al admin ver todos los pedidos realizados"""
+
+    # Esto es para que devuelva los datos como una lista de diccionarios (JSON)
+
+
+
+
+
     
-    return {"message": "Pedido procesado y guardado para IA"}
+
+
+
+@app.put("/admin/orders/{order_id}/ship", tags=["Ventas"])
+def ship_admin_order(order_id: int, admin: models.User = Depends(check_admin)):
+    """Marca un pedido como enviado en SQLite"""
+
+
+    # Para simplificar, simplemente lo borramos de la lista de 'pendientes'
+    # o podrías añadir una columna status si quisieras conservarlo
+
+
+
+    return {"message": "Pedido procesado y enviado"}
+
+@app.delete("/admin/orders/clear", tags=["Ventas"])
+def clear_all_orders(admin: models.User = Depends(check_admin)):
+    """Limpia todo el historial de pedidos"""
+
+
+
+
+
+    return {"message": "Historial limpiado"}
+
 
 @app.get("/ai-status", tags=["IA"])
-def get_ai_status():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT * FROM ai_status")
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return {"last_trained": row[0], "accuracy": row[1]}
-    return {"status": "Aún no entrenado"}
+
+
+
+
 
 # --- INTERACCIONES E IA ---
 
@@ -277,3 +314,89 @@ def check_low_stock(background_tasks: BackgroundTasks, db: Session = Depends(get
         return {"message": "Alerta procesada", "count": len(low_stock_items)}
     
     return {"message": "Stock correcto", "count": 0}
+
+# --- NUEVO ENDPOINT DE CHECKOUT (En main.py) ---
+@app.post("/checkout", tags=["Ventas"])
+def checkout(order: OrderSchema, db: Session = Depends(get_db)):
+    # 1. Validar y Restar Stock
+    for item in order.items:
+        db_product = db.query(models.Product).filter(models.Product.id == item.id).first()
+        if not db_product:
+            raise HTTPException(status_code=404, detail=f"Producto {item.name} no encontrado")
+        if db_product.stock < item.qty:
+            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {item.name}")
+        
+        db_product.stock -= item.qty
+
+    # 2. Guardar Pedido en Postgres
+    items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
+    db_order = models.Order(
+        user_email=order.user,
+        total=order.total,
+        items_summary=items_str,
+        address=order.address,
+        status="pending"
+    )
+    db.add(db_order)
+    db.commit()
+    db.refresh(db_order)
+    
+    return {"message": "Venta exitosa", "order_id": db_order.id}
+
+# --- NUEVO ENDPOINT PARA ADMIN (En main.py) ---
+@app.get("/admin/orders", response_model=List[Any], tags=["Ventas"])
+def get_admin_orders(db: Session = Depends(get_db), admin: models.User = Depends(check_admin)):
+    orders = db.query(models.Order).order_by(models.Order.id.desc()).all()
+    # Mapeamos para que el frontend reciba los nombres que espera
+    return [{
+        "id": o.id,
+        "user": o.user_email,
+        "total": o.total,
+        "date": o.date,
+        "items": o.items_summary,
+        "address": o.address,
+        "status": o.status
+    } for o in orders]
+
+# --- NUEVO ENDPOINT DE CHECKOUT (En main.py) ---
+@app.post("/checkout", tags=["Ventas"])
+def checkout(order: OrderSchema, db: Session = Depends(get_db)):
+    # 1. Validar y Restar Stock
+    for item in order.items:
+        db_product = db.query(models.Product).filter(models.Product.id == item.id).first()
+        if not db_product:
+            raise HTTPException(status_code=404, detail=f"Producto {item.name} no encontrado")
+        if db_product.stock < item.qty:
+            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {item.name}")
+        
+        db_product.stock -= item.qty
+
+    # 2. Guardar Pedido en Postgres
+    items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
+    db_order = models.Order(
+        user_email=order.user,
+        total=order.total,
+        items_summary=items_str,
+        address=order.address,
+        status="pending"
+    )
+    db.add(db_order)
+    db.commit()
+    db.refresh(db_order)
+    
+    return {"message": "Venta exitosa", "order_id": db_order.id}
+
+# --- NUEVO ENDPOINT PARA ADMIN (En main.py) ---
+@app.get("/admin/orders", response_model=List[Any], tags=["Ventas"])
+def get_admin_orders(db: Session = Depends(get_db), admin: models.User = Depends(check_admin)):
+    orders = db.query(models.Order).order_by(models.Order.id.desc()).all()
+    # Mapeamos para que el frontend reciba los nombres que espera
+    return [{
+        "id": o.id,
+        "user": o.user_email,
+        "total": o.total,
+        "date": o.date,
+        "items": o.items_summary,
+        "address": o.address,
+        "status": o.status
+    } for o in orders]
