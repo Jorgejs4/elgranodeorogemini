@@ -162,11 +162,13 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     return {"message": "Producto eliminado"}
 
 # --- CHECKOUT Y PEDIDOS (NUEVO) ---
+from datetime import datetime
+
 @app.post("/checkout", tags=["Ventas"])
 def checkout(order: OrderSchema, db: Session = Depends(get_db)):
-    """Procesa la venta: Resta stock en PostgreSQL y guarda historial en SQLite"""
+    """Procesa la venta: Resta stock y guarda el pedido, TODO en PostgreSQL (Neon)"""
     
-    # 1. ACTUALIZAR STOCK EN DB PRINCIPAL (PostgreSQL)
+    # 1. ACTUALIZAR STOCK
     for item in order.items:
         db_product = db.query(models.Product).filter(models.Product.id == item.id).first()
         
@@ -179,28 +181,33 @@ def checkout(order: OrderSchema, db: Session = Depends(get_db)):
         # Restamos el stock
         db_product.stock -= item.qty
     
-    db.commit() # Guardamos los cambios de stock
-
-    # 2. GUARDAR EN EL HISTORIAL DE PEDIDOS (SQLite)
-
-
-    
-    # Guardamos los items, la dirección y un estado "pending"
+    # 2. GUARDAR EL PEDIDO EN LA MISMA BASE DE DATOS
     items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
     
-    # Asegúrate de que la tabla orders tenga la columna 'address' y 'status'
-    # Si te da error, es porque la tabla ya existe sin esas columnas. 
-    # En ese caso, borra el archivo elgrano.db y reinicia Docker.
-
-
-
+    new_order = models.Order(
+        user_email=order.user,
+        total=order.total,
+        items_summary=items_str,
+        address=order.address,
+        status="pending",
+        date=datetime.utcnow() # Guarda la hora exacta para la IA y el Gráfico
+    )
     
-    return {"message": "Venta realizada, stock actualizado y datos guardados para la IA"}
+    db.add(new_order)
+    db.commit()          # Guardamos el stock y el pedido al mismo tiempo
+    db.refresh(new_order) # Recuperamos el ID que le acaba de asignar Neon
+    
+    # IMPORTANTE: Devolvemos 'new_order'. Si devolvemos un {"message": "..."}, 
+    # React no sabrá qué pedido acaba de crear y el panel se quedará en blanco.
+    return new_order
 
 
 @app.get("/admin/orders", tags=["Ventas"])
-def get_admin_orders(admin: models.User = Depends(check_admin)):
-    """Permite al admin ver todos los pedidos realizados"""
+def get_admin_orders(admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
+    """Permite al admin ver todos los pedidos realizados ordenados por los más recientes"""
+    # Consulta optimizada que trae los pedidos del más nuevo al más viejo
+    orders = db.query(models.Order).order_by(models.Order.id.desc()).all()
+    return orders
 
     # Esto es para que devuelva los datos como una lista de diccionarios (JSON)
 
