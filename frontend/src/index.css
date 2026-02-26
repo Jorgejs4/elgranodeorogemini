@@ -7,3 +7,11 @@ body, html {
   height: 100%;
   background-color: #09090b; /* Zinc-950 */
 }
+
+/* --- HACKS PARA OCULTAR GOOGLE TRANSLATE --- */
+.goog-te-banner-frame.skiptranslate { display: none !important; }
+body { top: 0px !important; }
+#google_translate_element { display: none !important; }
+.goog-tooltip { display: none !important; }
+.goog-tooltip:hover { display: none !important; }
+.goog-text-highlight { background-color: transparent !important; border: none !important; box-shadow: none !important; }
