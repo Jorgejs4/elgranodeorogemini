@@ -4,8 +4,22 @@ import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-
 // --- CONFIGURACIÓN DE URL ---
 const API_BASE_URL = 'https://grano-oro-api.onrender.com';
 
-// --- NUEVO TRADUCTOR (Desplegable nativo y elegante) ---
+// Función externa para que ESLint no se queje de inmutabilidad en React
+const setLanguageCookie = (langCode) => {
+  if (langCode === 'es') {
+    document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+    document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${window.location.hostname}`;
+  } else {
+    document.cookie = `googtrans=/es/${langCode}; path=/;`;
+    document.cookie = `googtrans=/es/${langCode}; path=/; domain=.${window.location.hostname}`;
+  }
+  window.location.reload(); 
+};
+
+// --- NUEVO TRADUCTOR (Botón con Banderas y Anti-Barra-Blanca) ---
 const LanguageSelector = () => {
+  const [isOpen, setIsOpen] = useState(false);
+  
   const getCookie = (name) => {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
@@ -13,39 +27,70 @@ const LanguageSelector = () => {
     return null;
   };
 
-  const currentLang = getCookie('googtrans')?.split('/').pop() || 'es';
+  const currentLangCookie = getCookie('googtrans')?.split('/').pop() || 'es';
 
-  const handleLanguageChange = (e) => {
-    const lang = e.target.value;
-    if (lang === 'es') {
-      // Si vuelve a español, borramos la cookie de Google
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${window.location.hostname}`;
-    } else {
-      // Forzamos la cookie de traducción al nuevo idioma
-      document.cookie = `googtrans=/es/${lang}; path=/;`;
-      document.cookie = `googtrans=/es/${lang}; path=/; domain=.${window.location.hostname}`;
-    }
-    window.location.reload(); // Recarga para aplicar traducción
-  };
+  // Configuración de los idiomas con sus banderas
+  const languages = [
+    { code: 'es', flag: '🇪🇸', name: 'Español' },
+    { code: 'en', flag: '🇬🇧', name: 'English' },
+    { code: 'fr', flag: '🇫🇷', name: 'Français' },
+    { code: 'de', flag: '🇩🇪', name: 'Deutsch' },
+    { code: 'it', flag: '🇮🇹', name: 'Italiano' },
+    { code: 'zh-CN', flag: '🇨🇳', name: '中文' }
+  ];
+
+  const currentLang = languages.find(l => l.code === currentLangCookie) || languages[0];
 
   return (
-    <div className="relative flex items-center mr-4">
-      <span className="text-xl mr-2">🌐</span>
-      <select 
-        className="bg-zinc-900 text-zinc-300 text-sm font-bold border border-zinc-700 rounded-lg px-3 py-1.5 outline-none cursor-pointer hover:border-amber-500 transition-colors shadow-lg"
-        value={currentLang}
-        onChange={handleLanguageChange}
+    <div className="relative mr-2 md:mr-4">
+      {/* EL BOTÓN CON LA BANDERA ACTUAL */}
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-900 border border-zinc-700 hover:border-amber-500 transition-colors shadow-lg text-xl"
+        title="Cambiar idioma"
       >
-        <option value="es">Español</option>
-        <option value="en">English</option>
-        <option value="fr">Français</option>
-        <option value="de">Deutsch</option>
-        <option value="it">Italiano</option>
-        <option value="zh-CN">中文</option>
-      </select>
-      {/* Escondemos el feo widget original de Google */}
+        {currentLang.flag}
+      </button>
+      
+      {/* EL MENÚ DESPLEGABLE CON LAS OPCIONES */}
+      {isOpen && (
+        <div className="absolute top-12 right-0 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-2 w-36 z-50 animate-fade-in">
+          {languages.map(lang => (
+            <button
+              key={lang.code}
+              onClick={() => setLanguageCookie(lang.code)}
+              className={`w-full text-left px-4 py-2 hover:bg-zinc-800 transition flex items-center gap-3 ${currentLangCookie === lang.code ? 'text-amber-500 font-bold bg-zinc-800/50' : 'text-zinc-300'}`}
+            >
+              <span className="text-xl">{lang.flag}</span> 
+              <span className="text-sm">{lang.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      
+      {/* Escondemos el widget original */}
       <div id="google_translate_element" className="hidden"></div>
+      
+      {/* DESTRUCTOR DE LA BARRA BLANCA DE GOOGLE */}
+      <style>{`
+        .goog-te-banner-frame.skiptranslate,
+        .skiptranslate > iframe {
+            display: none !important;
+        }
+        body {
+            top: 0px !important; 
+            position: static !important;
+        }
+        #goog-gt-tt, .goog-te-balloon-frame {
+            display: none !important;
+        }
+        font {
+            background: transparent !important;
+        }
+        .VIpgJd-ZVi9od-ORHb-OEVmcd {
+            display: none !important;
+        }
+      `}</style>
     </div>
   );
 };
