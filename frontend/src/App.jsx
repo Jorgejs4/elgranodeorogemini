@@ -5,22 +5,22 @@ import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-
 const API_BASE_URL = 'https://grano-oro-api.onrender.com';
 
 // 1. FUNCIÓN FUERA (Sin cambios, para evitar errores de inmutabilidad)
-
 /* ===============================
-   LEER COOKIE GOOGLE
-const getCurrentLanguage = () => {
+   LEER IDIOMA DESDE COOKIE
+================================= */
+function getCurrentLanguage() {
   const match = document.cookie.match(/(^| )googtrans=([^;]+)/);
 
   if (!match) return "es";
 
   const value = decodeURIComponent(match[2]);
   return value.split("/").pop() || "es";
-};
+}
 
 /* ===============================
    CAMBIAR IDIOMA
 ================================= */
-const setLanguageCookie = (langCode, setLang) => {
+function setLanguageCookie(langCode, setLang) {
   const domain = window.location.hostname;
 
   if (langCode === "es") {
@@ -33,22 +33,19 @@ const setLanguageCookie = (langCode, setLang) => {
     document.cookie = `googtrans=/es/${langCode}; path=/; domain=.${domain}`;
   }
 
-  // ✅ actualiza bandera inmediatamente
   setLang(langCode);
 
-  // pequeño delay para asegurar cookie
   setTimeout(() => {
     window.location.reload();
   }, 120);
-};
+}
 
 /* ===============================
-   COMPONENTE LANGUAGE SELECTOR
+   LANGUAGE SELECTOR
 ================================= */
 const LanguageSelector = () => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // ✅ inicialización correcta (sin useEffect)
   const [currentLangCode, setCurrentLangCode] = useState(() =>
     getCurrentLanguage()
   );
@@ -69,7 +66,6 @@ const LanguageSelector = () => {
   return (
     <div className="relative mr-2 md:mr-4 flex items-center">
 
-      {/* BOTÓN PRINCIPAL */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-900 border border-zinc-700 hover:border-amber-500 transition-all shadow-lg overflow-hidden"
@@ -77,11 +73,10 @@ const LanguageSelector = () => {
         <img
           src={currentLang.flag}
           alt={currentLang.name}
-          className="w-6 h-6 object-cover rounded-full"
+          className="w-6 h-6 rounded-full"
         />
       </button>
 
-      {/* DESPLEGABLE */}
       {isOpen && (
         <div className="absolute top-12 right-0 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-2 w-40 z-50">
           {languages.map(lang => (
@@ -91,7 +86,7 @@ const LanguageSelector = () => {
                 setIsOpen(false);
                 setLanguageCookie(lang.code, setCurrentLangCode);
               }}
-              className={`w-full text-left px-4 py-2 hover:bg-zinc-800 transition flex items-center gap-3 ${
+              className={`w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-zinc-800 ${
                 currentLangCode === lang.code
                   ? "text-amber-500 font-bold bg-zinc-800/50"
                   : "text-zinc-300"
@@ -99,8 +94,7 @@ const LanguageSelector = () => {
             >
               <img
                 src={lang.flag}
-                alt={lang.name}
-                className="w-5 h-5 object-cover rounded-full"
+                className="w-5 h-5 rounded-full"
               />
               <span className="text-sm">{lang.name}</span>
             </button>
@@ -108,10 +102,8 @@ const LanguageSelector = () => {
         </div>
       )}
 
-      {/* GOOGLE TRANSLATE ELEMENT */}
       <div id="google_translate_element" className="hidden"></div>
 
-      {/* OCULTAR UI GOOGLE */}
       <style>{`
         .goog-te-banner-frame.skiptranslate,
         .skiptranslate > iframe,
@@ -121,16 +113,6 @@ const LanguageSelector = () => {
 
         body {
           top: 0px !important;
-          position: static !important;
-        }
-
-        #goog-gt-tt,
-        .goog-te-balloon-frame {
-          display: none !important;
-        }
-
-        font {
-          background: transparent !important;
         }
       `}</style>
 
