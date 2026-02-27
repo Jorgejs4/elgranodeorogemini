@@ -7,84 +7,132 @@ const API_BASE_URL = 'https://grano-oro-api.onrender.com';
 // 1. FUNCIÓN FUERA (Sin cambios, para evitar errores de inmutabilidad)
 const setLanguageCookie = (langCode) => {
   const domain = window.location.hostname;
-  if (langCode === 'es') {
-    document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-    document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${domain}`;
+
+  if (langCode === "es") {
+    // eliminar traducción
+    document.cookie =
+      "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    document.cookie =
+      `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${domain}`;
   } else {
+    // establecer idioma
     document.cookie = `googtrans=/es/${langCode}; path=/;`;
     document.cookie = `googtrans=/es/${langCode}; path=/; domain=.${domain}`;
   }
-  window.location.reload(); 
+
+  // pequeño delay para asegurar escritura de cookie
+  setTimeout(() => {
+    window.location.reload();
+  }, 100);
 };
 
-// 2. COMPONENTE CORREGIDO (Sin useEffect para evitar el error de renderizado en cascada)
+/* ===============================
+   LEER IDIOMA ACTUAL DESDE COOKIE
+================================= */
+const getCurrentLanguage = () => {
+  const name = "googtrans";
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+
+  if (parts.length === 2) {
+    const cookieVal = decodeURIComponent(
+      parts.pop().split(";").shift()
+    );
+
+    return cookieVal.split("/").pop() || "es";
+  }
+
+  return "es";
+};
+
+/* ===============================
+   COMPONENTE LANGUAGE SELECTOR
+================================= */
 const LanguageSelector = () => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Definimos los idiomas aquí dentro para usarlos en la inicialización del estado
   const languages = [
-    { code: 'es', flag: 'https://flagcdn.com/es.svg', name: 'Español' },
-    { code: 'en', flag: 'https://flagcdn.com/gb.svg', name: 'English' },
-    { code: 'fr', flag: 'https://flagcdn.com/fr.svg', name: 'Français' },
-    { code: 'de', flag: 'https://flagcdn.com/de.svg', name: 'Deutsch' },
-    { code: 'it', flag: 'https://flagcdn.com/it.svg', name: 'Italiano' },
-    { code: 'zh-CN', flag: 'https://flagcdn.com/cn.svg', name: '中文' }
+    { code: "es", flag: "https://flagcdn.com/es.svg", name: "Español" },
+    { code: "en", flag: "https://flagcdn.com/gb.svg", name: "English" },
+    { code: "fr", flag: "https://flagcdn.com/fr.svg", name: "Français" },
+    { code: "de", flag: "https://flagcdn.com/de.svg", name: "Deutsch" },
+    { code: "it", flag: "https://flagcdn.com/it.svg", name: "Italiano" },
+    { code: "zh-CN", flag: "https://flagcdn.com/cn.svg", name: "中文" },
   ];
 
-  // LEEMOS LA COOKIE DIRECTAMENTE EN EL ESTADO INICIAL
-  const [currentLangCode] = useState(() => {
-    const name = 'googtrans';
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) {
-      const cookieVal = decodeURIComponent(parts.pop().split(';').shift());
-      return cookieVal.split('/').pop() || 'es';
-    }
-    return 'es';
-  });
+  // 🔥 SIEMPRE lee la cookie actual
+  const currentLangCode = getCurrentLanguage();
 
-  const currentLang = languages.find(l => l.code === currentLangCode) || languages[0];
+  const currentLang =
+    languages.find((l) => l.code === currentLangCode) ||
+    languages[0];
 
   return (
     <div className="relative mr-2 md:mr-4 flex items-center">
+      
       {/* BOTÓN PRINCIPAL */}
-      <button 
+      <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-900 border border-zinc-700 hover:border-amber-500 transition-all shadow-lg overflow-hidden"
       >
-        <img 
-          src={currentLang.flag} 
-          alt={currentLang.name} 
-          className="w-6 h-6 object-cover rounded-full" 
+        <img
+          src={currentLang.flag}
+          alt={currentLang.name}
+          className="w-6 h-6 object-cover rounded-full"
         />
       </button>
-      
-      {/* DESPLEGABLE */}
+
+      {/* MENU DESPLEGABLE */}
       {isOpen && (
         <div className="absolute top-12 right-0 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-2 w-40 z-50 animate-fade-in">
-          {languages.map(lang => (
+          {languages.map((lang) => (
             <button
               key={lang.code}
               onClick={() => {
                 setIsOpen(false);
                 setLanguageCookie(lang.code);
               }}
-              className={`w-full text-left px-4 py-2 hover:bg-zinc-800 transition flex items-center gap-3 ${currentLangCode === lang.code ? 'text-amber-500 font-bold bg-zinc-800/50' : 'text-zinc-300'}`}
+              className={`w-full text-left px-4 py-2 hover:bg-zinc-800 transition flex items-center gap-3 ${
+                currentLangCode === lang.code
+                  ? "text-amber-500 font-bold bg-zinc-800/50"
+                  : "text-zinc-300"
+              }`}
             >
-              <img src={lang.flag} alt={lang.name} className="w-5 h-5 object-cover rounded-full" />
+              <img
+                src={lang.flag}
+                alt={lang.name}
+                className="w-5 h-5 object-cover rounded-full"
+              />
               <span className="text-sm">{lang.name}</span>
             </button>
           ))}
         </div>
       )}
-      
+
+      {/* GOOGLE TRANSLATE */}
       <div id="google_translate_element" className="hidden"></div>
-      
+
+      {/* OCULTAR UI GOOGLE */}
       <style>{`
-        .goog-te-banner-frame.skiptranslate, .skiptranslate > iframe, .VIpgJd-ZVi9od-ORHb-OEVmcd { display: none !important; }
-        body { top: 0px !important; position: static !important; }
-        #goog-gt-tt, .goog-te-balloon-frame { display: none !important; }
-        font { background: transparent !important; }
+        .goog-te-banner-frame.skiptranslate,
+        .skiptranslate > iframe,
+        .VIpgJd-ZVi9od-ORHb-OEVmcd {
+          display: none !important;
+        }
+
+        body {
+          top: 0px !important;
+          position: static !important;
+        }
+
+        #goog-gt-tt,
+        .goog-te-balloon-frame {
+          display: none !important;
+        }
+
+        font {
+          background: transparent !important;
+        }
       `}</style>
     </div>
   );
