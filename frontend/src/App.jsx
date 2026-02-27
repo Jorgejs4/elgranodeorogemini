@@ -16,52 +16,62 @@ const setLanguageCookie = (langCode) => {
   window.location.reload(); 
 };
 
-// --- NUEVO TRADUCTOR (Botón con Banderas y Anti-Barra-Blanca) ---
+// --- NUEVO TRADUCTOR (Botón con Banderas Reales en Imágenes) ---
 const LanguageSelector = () => {
   const [isOpen, setIsOpen] = useState(false);
   
   const getCookie = (name) => {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
+    if (parts.length === 2) {
+      // Usamos decodeURIComponent porque a veces el navegador guarda la '/' como '%2F'
+      return decodeURIComponent(parts.pop().split(';').shift());
+    }
     return null;
   };
 
   const currentLangCookie = getCookie('googtrans')?.split('/').pop() || 'es';
 
-  // Configuración de los idiomas con sus banderas
+  // Usamos imágenes SVG reales de FlagCDN para que Windows no muestre letras
   const languages = [
-    { code: 'es', flag: '🇪🇸', name: 'Español' },
-    { code: 'en', flag: '🇬🇧', name: 'English' },
-    { code: 'fr', flag: '🇫🇷', name: 'Français' },
-    { code: 'de', flag: '🇩🇪', name: 'Deutsch' },
-    { code: 'it', flag: '🇮🇹', name: 'Italiano' },
-    { code: 'zh-CN', flag: '🇨🇳', name: '中文' }
+    { code: 'es', flag: 'https://flagcdn.com/es.svg', name: 'Español' },
+    { code: 'en', flag: 'https://flagcdn.com/gb.svg', name: 'English' },
+    { code: 'fr', flag: 'https://flagcdn.com/fr.svg', name: 'Français' },
+    { code: 'de', flag: 'https://flagcdn.com/de.svg', name: 'Deutsch' },
+    { code: 'it', flag: 'https://flagcdn.com/it.svg', name: 'Italiano' },
+    { code: 'zh-CN', flag: 'https://flagcdn.com/cn.svg', name: '中文' }
   ];
 
   const currentLang = languages.find(l => l.code === currentLangCookie) || languages[0];
 
   return (
-    <div className="relative mr-2 md:mr-4">
-      {/* EL BOTÓN CON LA BANDERA ACTUAL */}
+    <div className="relative mr-2 md:mr-4 flex items-center">
+      {/* EL BOTÓN CON LA BANDERA ACTUAL PERFECTAMENTE CENTRADA */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-900 border border-zinc-700 hover:border-amber-500 transition-colors shadow-lg text-xl"
+        className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-900 border border-zinc-700 hover:border-amber-500 transition-all shadow-lg overflow-hidden"
         title="Cambiar idioma"
       >
-        {currentLang.flag}
+        <img 
+          src={currentLang.flag} 
+          alt={currentLang.name} 
+          className="w-6 h-6 object-cover rounded-full" 
+        />
       </button>
       
       {/* EL MENÚ DESPLEGABLE CON LAS OPCIONES */}
       {isOpen && (
-        <div className="absolute top-12 right-0 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-2 w-36 z-50 animate-fade-in">
+        <div className="absolute top-12 right-0 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-2 w-40 z-50 animate-fade-in">
           {languages.map(lang => (
             <button
               key={lang.code}
-              onClick={() => setLanguageCookie(lang.code)}
-              className={`w-full text-left px-4 py-2 hover:bg-zinc-800 transition flex items-center gap-3 ${currentLangCookie === lang.code ? 'text-amber-500 font-bold bg-zinc-800/50' : 'text-zinc-300'}`}
+              onClick={() => {
+                setIsOpen(false);
+                setLanguageCookie(lang.code);
+              }}
+              className={`w-full text-left px-4 py-2 hover:bg-zinc-800 transition flex items-center gap-3 ${currentLang.code === lang.code ? 'text-amber-500 font-bold bg-zinc-800/50' : 'text-zinc-300'}`}
             >
-              <span className="text-xl">{lang.flag}</span> 
+              <img src={lang.flag} alt={lang.name} className="w-5 h-5 object-cover rounded-full" />
               <span className="text-sm">{lang.name}</span>
             </button>
           ))}
