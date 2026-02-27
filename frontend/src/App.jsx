@@ -37,6 +37,7 @@ function setLanguageCookie(langCode, setLang) {
 
   /* 🔥 FORZAR GOOGLE TRANSLATE */
   const googleSelect = document.querySelector(".goog-te-combo");
+  
 
   if (googleSelect) {
     googleSelect.value = langCode;
@@ -219,6 +220,42 @@ const ProductDetailWrapper = ({ products, addToCart, buyNow, toggleWishlist, wis
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
+/* ===============================
+     GOOGLE TRANSLATE INIT
+  ================================ */
+  useEffect(() => {
+    if (window.google && window.google.translate) return;
+
+    window.googleTranslateElementInit = function () {
+      new window.google.translate.TranslateElement(
+        {
+          pageLanguage: "es",
+          autoDisplay: false
+        },
+        "google_translate_element"
+      );
+    };
+
+    const script = document.createElement("script");
+    script.src =
+      "//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
+    script.async = true;
+
+    document.body.appendChild(script);
+  }, []);
+
+  /* ===============================
+     FORCE LANGUAGE ON ROUTE CHANGE
+  ================================ */
+  useEffect(() => {
+    const select = document.querySelector(".goog-te-combo");
+
+    if (select) {
+      const lang = getCurrentLanguage();
+      select.value = lang;
+      select.dispatchEvent(new Event("change"));
+    }
+  }, [location.pathname]);
   
   const [products, setProducts] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
