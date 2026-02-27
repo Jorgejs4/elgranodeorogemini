@@ -35,9 +35,18 @@ function setLanguageCookie(langCode, setLang) {
 
   setLang(langCode);
 
-  setTimeout(() => {
-    window.location.reload();
-  }, 120);
+  /* 🔥 FORZAR GOOGLE TRANSLATE */
+  const googleSelect = document.querySelector(".goog-te-combo");
+
+  if (googleSelect) {
+    googleSelect.value = langCode;
+    googleSelect.dispatchEvent(new Event("change"));
+  } else {
+    // fallback si aún no está cargado
+    setTimeout(() => {
+      window.location.reload();
+    }, 300);
+  }
 }
 
 /* ===============================
