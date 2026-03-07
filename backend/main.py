@@ -69,6 +69,18 @@ class InteractionSchema(BaseModel):
 class StockUpdate(BaseModel):
     stock: int
 
+    # --- STOCK MANAGEMENT ---
+class StockUpdate(BaseModel):
+    stock: int
+
+# NUEVO: Esquemas para guardar todo el stock a la vez
+class BulkStockItem(BaseModel):
+    id: int
+    stock: int
+
+class BulkStockRequest(BaseModel):
+    updates: List[BulkStockItem]
+
 # --- DEPENDENCIAS DE SEGURIDAD ---
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
@@ -146,6 +158,17 @@ def update_product_stock(product_id: int, data: StockUpdate, admin: models.User 
     db.refresh(product)
     return product
 
+
+@app.put("/admin/products/stock/bulk", tags=["Admin"])
+def update_bulk_stock(data: BulkStockRequest, admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
+    """Guarda todos los cambios de stock de una sola vez"""
+    for item in data.updates:
+        product = db.query(models.Product).filter(models.Product.id == item.id).first()
+        if product:
+            product.stock = item.stock
+    db.commit()
+    return {"message": "Todo el stock actualizado masivamente"}
+
 # --- CHECKOUT Y PEDIDOS ---
 @app.post("/checkout", tags=["Ventas"])
 def checkout(order: OrderSchema, db: Session = Depends(get_db)):
@@ -214,9 +237,39 @@ def track_interaction(interaction: InteractionSchema, user_id: int = None, db: S
 def get_recommendations_route(user_id: Optional[int] = None, db: Session = Depends(get_db)):
     import ml_core
     if not user_id:
-        return db.query(models.Product).limit(4).all()
+        # Filtro stock > 0 añadido
+        return db.query(models.Product).filter(models.Product.stock > 0).limit(4).all()
     rec_ids = ml_core.get_recommendations(user_id, db)
-    return db.query(models.Product).filter(models.Product.id.in_(rec_ids)).all()
+    # Filtro stock > 0 añadido
+    return db.query(models.Product).filter(models.Product.id.in_(rec_ids), models.Product.stock > 0).all()
+
+
+@app.post("/admin/seed-ai-data", tags=["Admin"])
+def seed_ai_data(admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
+    """Genera ventas e interacciones falsas en el pasado para que la IA tenga datos que analizar"""
+    import random
+    from datetime import timedelta
+    
+    products = db.query(models.Product).all()
+    if not products: return {"message": "Crea productos primero"}
+    
+    # Generar 200 interacciones (Vistas, carritos, compras)
+    actions = ["view", "add_to_cart", "purchase"]
+    for _ in range(200):
+        inter = models.Interaction(user_id=admin.id, product_id=random.choice(products).id, action_type=random.choice(actions))
+        db.add(inter)
+        
+    # Generar 50 pedidos históricos repartidos en el último año
+    for i in range(50):
+        d = datetime.utcnow() - timedelta(days=random.randint(0, 365), hours=random.randint(0,23))
+        order = models.Order(
+            user_email=admin.email, total=round(random.uniform(15.0, 150.0), 2),
+            items_summary="Pedido de entrenamiento IA", address="Simulación IA",
+            status="shipped", date=d
+        )
+        db.add(order)
+    db.commit()
+    return {"message": "Datos inyectados. ¡La IA ya tiene comida!"}
 
 @app.get("/admin/ai-insights", tags=["Admin"])
 def get_ai_insights(db: Session = Depends(get_db)):

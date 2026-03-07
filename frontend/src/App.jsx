@@ -17,11 +17,10 @@ const setLanguageCookie = (langCode) => {
   window.location.reload(); 
 };
 
-// 2. COMPONENTE CORREGIDO (Sin useEffect para evitar el error de renderizado en cascada)
+// 2. COMPONENTE SELECTOR DE IDIOMAS
 const LanguageSelector = () => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Definimos los idiomas aquí dentro para usarlos en la inicialización del estado
   const languages = [
     { code: 'es', flag: 'https://flagcdn.com/es.svg', name: 'Español' },
     { code: 'en', flag: 'https://flagcdn.com/gb.svg', name: 'English' },
@@ -31,7 +30,6 @@ const LanguageSelector = () => {
     { code: 'zh-CN', flag: 'https://flagcdn.com/cn.svg', name: '中文' }
   ];
 
-  // LEEMOS LA COOKIE DIRECTAMENTE EN EL ESTADO INICIAL
   const [currentLangCode] = useState(() => {
     const name = 'googtrans';
     const value = `; ${document.cookie}`;
@@ -47,19 +45,13 @@ const LanguageSelector = () => {
 
   return (
     <div className="relative mr-2 md:mr-4 flex items-center">
-      {/* BOTÓN PRINCIPAL */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-900 border border-zinc-700 hover:border-amber-500 transition-all shadow-lg overflow-hidden"
       >
-        <img 
-          src={currentLang.flag} 
-          alt={currentLang.name} 
-          className="w-6 h-6 object-cover rounded-full" 
-        />
+        <img src={currentLang.flag} alt={currentLang.name} className="w-6 h-6 object-cover rounded-full" />
       </button>
       
-      {/* DESPLEGABLE */}
       {isOpen && (
         <div className="absolute top-12 right-0 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-2 w-40 z-50 animate-fade-in">
           {languages.map(lang => (
@@ -90,26 +82,39 @@ const LanguageSelector = () => {
   );
 };
 
-// --- COMPONENTE DE GRÁFICO ---
+// --- COMPONENTE DE GRÁFICO MEJORADO ---
 const SalesChart = ({ orders }) => {
+  const [view, setView] = useState('weekly');
+
   const data = useMemo(() => {
     if (!Array.isArray(orders)) return [];
-    const days = [];
     const today = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const dayStr = d.toLocaleDateString('es-ES', { weekday: 'short' });
-      const total = orders
-        .filter(o => o.date && new Date(o.date).toDateString() === d.toDateString())
-        .reduce((acc, curr) => acc + (curr.total || 0), 0);
-      days.push({ day: dayStr, val: total });
+    let result = [];
+
+    if (view === 'weekly') {
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today); d.setDate(today.getDate() - i);
+        const total = orders.filter(o => o.date && new Date(o.date).toDateString() === d.toDateString()).reduce((a, c) => a + (c.total || 0), 0);
+        result.push({ day: d.toLocaleDateString('es-ES', { weekday: 'short' }), val: total });
+      }
+    } else if (view === 'monthly') {
+      for (let i = 4; i >= 0; i--) {
+        const d = new Date(today); d.setDate(today.getDate() - (i * 7));
+        const total = orders.filter(o => o.date && new Date(o.date) >= new Date(d.setHours(0,0,0,0) - (7*86400000)) && new Date(o.date) <= new Date(d.setHours(23,59,59,999))).reduce((a, c) => a + (c.total || 0), 0);
+        result.push({ day: `Sem -${i}`, val: total });
+      }
+    } else if (view === 'yearly') {
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const total = orders.filter(o => o.date && new Date(o.date).getMonth() === d.getMonth() && new Date(o.date).getFullYear() === d.getFullYear()).reduce((a, c) => a + (c.total || 0), 0);
+        result.push({ day: d.toLocaleDateString('es-ES', { month: 'short' }), val: total });
+      }
     }
-    return days;
-  }, [orders]);
+    return result;
+  }, [orders, view]);
 
   if (!Array.isArray(orders) || orders.length === 0) return null;
-  const maxVal = Math.max(...data.map(d => d.val), 100);
+  const maxVal = Math.max(...data.map(d => d.val), 10); // Evitar dividir por 0
   const points = data.map((d, i) => {
     const x = (i / (data.length - 1)) * 100;
     const y = 100 - (d.val / maxVal) * 80;
@@ -117,9 +122,16 @@ const SalesChart = ({ orders }) => {
   }).join(' ');
 
   return (
-    <div className="w-full h-64 bg-zinc-900 rounded-2xl border border-zinc-800 p-6 relative overflow-hidden">
-      <h3 className="text-zinc-400 text-xs uppercase tracking-widest mb-4">Rendimiento Semanal</h3>
-      <div className="absolute inset-0 top-12 px-6 pb-6">
+    <div className="w-full h-72 bg-zinc-900 rounded-2xl border border-zinc-800 p-6 relative overflow-hidden flex flex-col">
+      <div className="flex justify-between items-center mb-4 z-20">
+        <h3 className="text-zinc-400 text-xs uppercase tracking-widest">Rendimiento en Ventas</h3>
+        <select value={view} onChange={(e) => setView(e.target.value)} className="bg-zinc-950 text-white border border-zinc-700 rounded-lg px-3 py-1 text-xs outline-none focus:border-amber-500">
+          <option value="weekly">Semanal</option>
+          <option value="monthly">Mensual</option>
+          <option value="yearly">Anual</option>
+        </select>
+      </div>
+      <div className="absolute inset-0 top-16 px-6 pb-6">
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
           <defs>
             <linearGradient id="gradient" x1="0" x2="0" y1="0" y2="1">
@@ -128,10 +140,10 @@ const SalesChart = ({ orders }) => {
             </linearGradient>
           </defs>
           <path d={`M0,100 ${points} 100,100`} fill="url(#gradient)" />
-          <polyline points={points} fill="none" stroke="#f59e0b" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+          <polyline points={points} fill="none" stroke="#f59e0b" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        <div className="flex justify-between mt-2 text-xs text-zinc-500 font-mono">
-           {data.map((d, i) => <span key={i}>{d.day}</span>)}
+        <div className="flex justify-between mt-3 text-[10px] md:text-xs text-zinc-500 font-mono">
+           {data.map((d, i) => <span key={i} className="uppercase">{d.day}</span>)}
         </div>
       </div>
     </div>
@@ -202,7 +214,10 @@ function App() {
   const [savedCards] = useState([{ id: 1, last4: '4242', brand: 'Visa' }]);
   const [useNewCard, setUseNewCard] = useState(false);
 
-  // Tracking
+  // NUEVOS ESTADOS PARA GESTIÓN MASIVA DE STOCK
+  const [stockEdits, setStockEdits] = useState({});
+
+  // Tracking de vistas
   useEffect(() => {
     if (location.pathname.startsWith('/product/')) {
        const prodId = location.pathname.split('/')[2];
@@ -215,6 +230,7 @@ function App() {
     }
   }, [location]);
 
+  // Cargar productos y recomendaciones
   useEffect(() => {
     let isMounted = true;
     const loadData = async () => {
@@ -225,13 +241,17 @@ function App() {
         if (user?.id) urlRec += `?user_id=${user.id}`;
         const resRec = await fetch(urlRec);
         const recData = resRec.ok ? await resRec.json() : [];
-        if (isMounted) { setProducts(Array.isArray(data) ? data : []); setRecommendations(Array.isArray(recData) ? recData : []); }
+        if (isMounted) { 
+          setProducts(Array.isArray(data) ? data : []); 
+          setRecommendations(Array.isArray(recData) ? recData : []); 
+        }
       } catch (err) { console.error(err); }
     };
     loadData();
     return () => { isMounted = false; };
   }, [user]);
 
+  // Cargar datos del panel Admin
   useEffect(() => {
     if (user && user.role === 'admin' && location.pathname === '/admin') {
       const fetchOrders = async () => {
@@ -289,20 +309,6 @@ function App() {
       } catch (err) { console.error(err); }
   };
   
-  const handleUpdateStock = async (id, newStock) => {
-      try {
-          const res = await fetch(`${API_BASE_URL}/admin/products/${id}/stock`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-              body: JSON.stringify({ stock: parseInt(newStock) })
-          });
-          if(res.ok) {
-              setProducts(products.map(p => p.id === id ? {...p, stock: parseInt(newStock)} : p));
-              alert("✅ Stock actualizado correctamente");
-          }
-      } catch(err) { console.error(err); }
-  };
-
   const handleDeleteProduct = async (id) => {
       if(window.confirm("¿Estás seguro de que quieres eliminar este producto? Se borrará para siempre.")) {
           try {
@@ -322,6 +328,44 @@ function App() {
     } catch (error) { console.error(error); }
   };
 
+  // --- NUEVAS FUNCIONES DE STOCK MASIVO E IA ---
+  const handleStockChange = (id, val) => {
+      setStockEdits(prev => ({ ...prev, [id]: parseInt(val) || 0 }));
+  };
+
+  const handleBulkUpdateStock = async () => {
+      const updates = Object.keys(stockEdits).map(id => ({ id: parseInt(id), stock: stockEdits[id] }));
+      if (updates.length === 0) return alert("No hay cambios que guardar.");
+      
+      try {
+          const res = await fetch(`${API_BASE_URL}/admin/products/stock/bulk`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+              body: JSON.stringify({ updates })
+          });
+          if(res.ok) {
+              alert("✅ Todo el stock se ha actualizado de golpe.");
+              setStockEdits({}); 
+              const resProd = await fetch(`${API_BASE_URL}/products/`);
+              setProducts(await resProd.json());
+          }
+      } catch(err) { console.error(err); }
+  };
+
+  const handleSeedAIData = async () => {
+      if(!window.confirm("¿Inyectar 50 pedidos y 200 interacciones para entrenar la IA?")) return;
+      try {
+          const res = await fetch(`${API_BASE_URL}/admin/seed-ai-data`, {
+              method: 'POST', headers: { 'Authorization': `Bearer ${user.token}` }
+          });
+          if(res.ok) {
+              alert("🧠 Datos de IA inyectados. Recarga la página para ver las estadísticas.");
+              window.location.reload();
+          }
+      } catch(err) { console.error(err); }
+  };
+
+  // --- PROCESAR PAGO CORREGIDO ---
   const processPayment = async (e) => {
     e.preventDefault();
     if(cart.length === 0) return;
@@ -340,7 +384,6 @@ function App() {
             })
         });
 
-        // --- CAMBIO CLAVE AQUÍ ---
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.detail || "Error interno del servidor (500)");
@@ -356,11 +399,11 @@ function App() {
 
     } catch (err) { 
         console.error("Error real:", err); 
-        alert(`Fallo en la compra: ${err.message}`); // Ahora verás el error de verdad
+        alert(`Fallo en la compra: ${err.message}`); 
     }
   };
 
-  // Cálculos de ventas
+  // Cálculos de ventas para el panel
   const today = new Date();
   const salesToday = orders.filter(o => o.date && new Date(o.date).toDateString() === today.toDateString()).reduce((acc, curr) => acc + (curr.total || 0), 0);
   const startOfWeek = new Date(today); startOfWeek.setDate(today.getDate() - today.getDay());
@@ -594,13 +637,17 @@ function App() {
             <div className="animate-fade-in max-w-7xl mx-auto px-4 mt-10 pb-20">
               <h2 className="text-3xl font-serif font-bold text-white mb-8 border-b border-zinc-800 pb-4">Dashboard Admin</h2>
               
-              {/* IA INSIGHTS */}
+              {/* IA INSIGHTS Y BOTÓN DE INYECCIÓN DE DATOS */}
+              <div className="flex items-center gap-3 mb-4 justify-between">
+                <div className="flex items-center gap-3">
+                   <span className="text-2xl">🤖</span>
+                   <h3 className="text-xl font-bold text-white">Inteligencia Artificial</h3>
+                </div>
+                <button onClick={handleSeedAIData} className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/50 px-3 py-1 rounded hover:bg-indigo-500 hover:text-white transition shadow-[0_0_10px_rgba(99,102,241,0.2)]">⚙️ Inyectar Datos Falsos (Test)</button>
+              </div>
+
               {aiInsights && (
                 <div className="bg-gradient-to-br from-indigo-900 to-purple-900 p-6 rounded-2xl border border-indigo-500/30 mb-8 shadow-xl">
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="text-2xl">🤖</span>
-                    <h3 className="text-xl font-bold text-white">Inteligencia Artificial</h3>
-                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-black/30 p-4 rounded-xl"><p className="text-indigo-300 text-xs uppercase font-bold">Hora Pico</p><p className="text-2xl text-white">{aiInsights.hora_pico_ventas}:00 hs</p></div>
                     <div className="bg-black/30 p-4 rounded-xl"><p className="text-purple-300 text-xs uppercase font-bold">Conversión</p><p className="text-2xl text-white">{aiInsights.tasa_conversion}%</p></div>
@@ -609,7 +656,7 @@ function App() {
                 </div>
               )}
 
-              {/* RESÚMENES FINANCIEROS (NUEVO) */}
+              {/* RESÚMENES FINANCIEROS */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                  <div className="bg-zinc-900 p-5 rounded-2xl border border-zinc-800"><p className="text-zinc-400 text-xs uppercase font-bold mb-1">Hoy</p><p className="text-2xl font-serif text-white">{salesToday.toFixed(2)}€</p></div>
                  <div className="bg-zinc-900 p-5 rounded-2xl border border-zinc-800"><p className="text-zinc-400 text-xs uppercase font-bold mb-1">Esta Semana</p><p className="text-2xl font-serif text-white">{salesWeek.toFixed(2)}€</p></div>
@@ -619,12 +666,20 @@ function App() {
 
               <div className="mb-8"><SalesChart orders={orders} /></div>
               
-              {/* GESTIÓN DE INVENTARIO (NUEVO) */}
-              <h3 className="text-2xl font-bold mb-4 text-white">📦 Gestión de Inventario</h3>
+              {/* GESTIÓN DE INVENTARIO CON BOTÓN DE GUARDADO MASIVO */}
+              <div className="flex justify-between items-end mb-4">
+                  <h3 className="text-2xl font-bold text-white">📦 Gestión de Inventario</h3>
+                  {Object.keys(stockEdits).length > 0 && (
+                      <button onClick={handleBulkUpdateStock} className="bg-amber-600 text-black px-6 py-2 rounded-lg font-bold hover:bg-amber-500 transition animate-bounce shadow-[0_0_15px_rgba(245,158,11,0.5)]">
+                          💾 Guardar Todos los Cambios ({Object.keys(stockEdits).length})
+                      </button>
+                  )}
+              </div>
+              
               <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-x-auto mb-12">
                 <table className="w-full text-left text-sm text-zinc-400 min-w-[600px]">
                   <thead className="bg-zinc-950 text-zinc-300 font-bold border-b border-zinc-800">
-                    <tr><th className="p-4">Producto</th><th className="p-4">Categoría</th><th className="p-4">Precio</th><th className="p-4">Stock</th><th className="p-4 text-right">Acciones</th></tr>
+                    <tr><th className="p-4">Producto</th><th className="p-4">Categoría</th><th className="p-4">Precio</th><th className="p-4">Stock Múltiple</th><th className="p-4 text-right">Acciones</th></tr>
                   </thead>
                   <tbody>
                     {products.map(p => (
@@ -633,10 +688,12 @@ function App() {
                         <td className="p-4">{p.category}</td>
                         <td className="p-4">{p.price}€</td>
                         <td className="p-4">
-                           <div className="flex items-center gap-2">
-                              <input type="number" defaultValue={p.stock} id={`stock-${p.id}`} className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 w-20 text-white outline-none focus:border-amber-500" />
-                              <button onClick={() => handleUpdateStock(p.id, document.getElementById(`stock-${p.id}`).value)} className="text-amber-500 hover:text-amber-400 font-bold px-2 py-1 bg-amber-500/10 rounded">Guardar</button>
-                           </div>
+                           <input 
+                               type="number" 
+                               value={stockEdits[p.id] !== undefined ? stockEdits[p.id] : p.stock} 
+                               onChange={(e) => handleStockChange(p.id, e.target.value)} 
+                               className={`bg-zinc-950 border rounded px-3 py-2 w-24 text-white outline-none transition-colors ${stockEdits[p.id] !== undefined ? 'border-amber-500 bg-amber-900/10' : 'border-zinc-700 focus:border-zinc-500'}`} 
+                           />
                         </td>
                         <td className="p-4 text-right">
                            <button onClick={() => handleDeleteProduct(p.id)} className="text-red-500 hover:bg-red-500 hover:text-white px-3 py-1 rounded transition border border-red-500/30 bg-red-900/10">Borrar</button>
@@ -685,7 +742,7 @@ function App() {
   );
 }
 
-// --- COMPONENTS EXTRA (Sin botón borrar) ---
+// --- COMPONENTS EXTRA ---
 function ProductCard({ product, onClick, onAdd, onBuy, recommended, isLiked, onLike }) {
     return (
         <div className={`group bg-zinc-900/40 rounded-3xl overflow-hidden border transition-all duration-500 hover:bg-zinc-900/80 ${recommended ? 'border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]' : 'border-zinc-800'}`}>
