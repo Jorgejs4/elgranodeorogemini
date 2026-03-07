@@ -9,10 +9,8 @@ from database import engine, get_db
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from pydantic import BaseModel
 
 # --- NUEVAS IMPORTACIONES PARA AUTOMATIZACIÓN E IA ---
-
 import pandas as pd
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -34,36 +32,22 @@ app.add_middleware(
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# --- BASE DE DATOS ADICIONAL PARA PEDIDOS Y ESTADO IA (SQLite Directo) ---
-# Usamos esto para no obligarte a modificar models.py ahora mismo
-
-
-
-
 # --- SCHEDULER: EL RELOJ AUTOMÁTICO ---
 def scheduled_retrain_job():
     print("🔄 [AUTO-SCHEDULER] Ejecutando reentrenamiento semanal...")
     try:
         # Aquí llamamos a tu lógica de entrenamiento
         ml_core.train_model() 
-        
-        # Actualizamos el estado
-
-
-
-
         print("✅ [AUTO-SCHEDULER] Modelo actualizado correctamente.")
     except Exception as e:
         print(f"❌ [AUTO-SCHEDULER] Error entrenando: {e}")
 
 scheduler = BackgroundScheduler()
 # Configurado para ejecutarse cada 1 semana. 
-# NOTA: Si quieres probarlo rápido, cambia 'weeks=1' por 'seconds=60'
 scheduler.add_job(scheduled_retrain_job, 'interval', weeks=1)
 scheduler.start()
 
 # --- ESQUEMAS PARA CHECKOUT (Pydantic) ---
-# Definidos aquí para no tocar schemas.py
 class OrderItemSchema(BaseModel):
     id: int
     name: str
@@ -97,7 +81,6 @@ def check_admin(current_user: models.User = Depends(get_current_user)):
     return current_user
 
 # --- AUTH Y LOGIN ---
-
 @app.post("/users/", response_model=schemas.UserResponse, tags=["Usuarios"])
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     hashed_password = security.get_password_hash(user.password)
@@ -127,7 +110,6 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     }
 
 # --- GESTIÓN DE USUARIOS ---
-
 @app.get("/users/", response_model=List[schemas.UserResponse], tags=["Usuarios"])
 def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return db.query(models.User).offset(skip).limit(limit).all()
@@ -142,7 +124,6 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User 
     return {"message": "Usuario eliminado"}
 
 # --- GESTIÓN DE PRODUCTOS ---
-
 @app.get("/products/", response_model=List[schemas.ProductResponse], tags=["Productos"])
 def read_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_products(db, skip=skip, limit=limit)
@@ -162,12 +143,10 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Producto eliminado"}
 
-# --- CHECKOUT Y PEDIDOS (NUEVO) ---
-from datetime import datetime
-
+# --- CHECKOUT Y PEDIDOS ---
 @app.post("/checkout", tags=["Ventas"])
 def checkout(order: OrderSchema, db: Session = Depends(get_db)):
-    """Procesa la venta: Resta stock y guarda el pedido, TODO en PostgreSQL (Neon)"""
+    """Procesa la venta: Resta stock y guarda el pedido"""
     
     # 1. ACTUALIZAR STOCK
     for item in order.items:
@@ -182,7 +161,7 @@ def checkout(order: OrderSchema, db: Session = Depends(get_db)):
         # Restamos el stock
         db_product.stock -= item.qty
     
-    # 2. GUARDAR EL PEDIDO EN LA MISMA BASE DE DATOS
+    # 2. GUARDAR EL PEDIDO
     items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
     
     new_order = models.Order(
@@ -191,66 +170,67 @@ def checkout(order: OrderSchema, db: Session = Depends(get_db)):
         items_summary=items_str,
         address=order.address,
         status="pending",
-        date=datetime.utcnow() # Guarda la hora exacta para la IA y el Gráfico
+        date=datetime.utcnow() # <-- CRÍTICO para que no rompa el frontend
     )
     
     db.add(new_order)
-    db.commit()          # Guardamos el stock y el pedido al mismo tiempo
-    db.refresh(new_order) # Recuperamos el ID que le acaba de asignar Neon
+    db.commit()          
+    db.refresh(new_order) 
     
-    # IMPORTANTE: Devolvemos 'new_order'. Si devolvemos un {"message": "..."}, 
-    # React no sabrá qué pedido acaba de crear y el panel se quedará en blanco.
-    return new_order
+    return {"message": "Venta exitosa", "order_id": new_order.id}
 
 
-@app.get("/admin/orders", tags=["Ventas"])
-def get_admin_orders(admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
-    """Permite al admin ver todos los pedidos realizados ordenados por los más recientes"""
-    # Consulta optimizada que trae los pedidos del más nuevo al más viejo
+@app.get("/admin/orders", response_model=List[Any], tags=["Ventas"])
+def get_admin_orders(db: Session = Depends(get_db), admin: models.User = Depends(check_admin)):
+    """Permite al admin ver todos los pedidos realizados"""
     orders = db.query(models.Order).order_by(models.Order.id.desc()).all()
-    return orders
-
-    # Esto es para que devuelva los datos como una lista de diccionarios (JSON)
-
-
-
-
-
-    
-
+    # Mapeamos para que el frontend reciba los nombres exactos que espera
+    return [{
+        "id": o.id,
+        "user": o.user_email,
+        "total": o.total,
+        "date": o.date,
+        "items": o.items_summary,
+        "address": o.address,
+        "status": o.status
+    } for o in orders]
 
 
 @app.put("/admin/orders/{order_id}/ship", tags=["Ventas"])
-def ship_admin_order(order_id: int, admin: models.User = Depends(check_admin)):
-    """Marca un pedido como enviado en SQLite"""
-
-
-    # Para simplificar, simplemente lo borramos de la lista de 'pendientes'
-    # o podrías añadir una columna status si quisieras conservarlo
-
-
-
+def ship_admin_order(order_id: int, admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
+    """Marca un pedido como enviado"""
+    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if order:
+        order.status = "shipped"
+        db.commit()
     return {"message": "Pedido procesado y enviado"}
 
 @app.delete("/admin/orders/clear", tags=["Ventas"])
 def clear_all_orders(admin: models.User = Depends(check_admin)):
     """Limpia todo el historial de pedidos"""
-
-
-
-
-
     return {"message": "Historial limpiado"}
 
-
 @app.get("/ai-status", tags=["IA"])
+def ai_status():
+    pass
 
+# --- STOCK MANAGEMENT ---
+class StockUpdate(BaseModel):
+    stock: int
 
-
-
+@app.put("/admin/products/{product_id}/stock", tags=["Admin"])
+def update_product_stock(product_id: int, data: StockUpdate, admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
+    """Actualiza el stock manualmente"""
+    product = db.query(models.Product).filter(models.Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    product.stock = data.stock
+    db.commit()
+    db.refresh(product)
+    return product
 
 # --- INTERACCIONES E IA ---
-
 @app.post("/interactions/", response_model=schemas.InteractionResponse, tags=["Interacciones"])
 def create_interaction(interaction: schemas.InteractionCreate, db: Session = Depends(get_db)):
     return crud.create_interaction(db=db, interaction=interaction)
@@ -273,160 +253,6 @@ def train_model(background_tasks: BackgroundTasks):
     background_tasks.add_task(scheduled_retrain_job)
     return {"message": "Entrenamiento iniciado en segundo plano"}  
 
-# --- SISTEMA DE CORREO (MAILTRAP) ---
-
-# ¡¡¡PEGA AQUÍ TUS DATOS DE MAILTRAP!!!
-MAILTRAP_USER = "5f6569de0cb0aa" 
-MAILTRAP_PASS = "874209eb9cb322"
-
-def send_stock_alert_email(low_stock_products):
-    msg = MIMEMultipart()
-    msg['From'] = 'sistema@elgranodeoro.com'
-    msg['To'] = 'admin@elgranodeoro.com'
-    msg['Subject'] = "🚨 ALERTA: Reposición de Stock Necesaria"
-
-    # Construir la lista de productos
-    cuerpo_items = ""
-    for p in low_stock_products:
-        cuerpo_items += f"• {p.name}: Quedan {p.stock} unidades\n"
-
-    cuerpo = f"""
-    Hola Administrador,
-    
-    Los siguientes productos están bajo mínimos (menos de 5 unidades):
-    
-    {cuerpo_items}
-    
-    Por favor, accede al panel de control para gestionar los pedidos.
-    """
-    
-    msg.attach(MIMEText(cuerpo, 'plain'))
-
-    try:
-        # Usamos el servidor de Mailtrap
-        with smtplib.SMTP("sandbox.smtp.mailtrap.io", 2525) as server:
-            server.login(MAILTRAP_USER, MAILTRAP_PASS)
-            server.send_message(msg)
-        print("✅ Correo de alerta enviado a Mailtrap")
-    except Exception as e:
-        print(f"❌ Error enviando correo: {e}")
-
-@app.get("/check-low-stock")
-def check_low_stock(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    # Buscamos productos con stock < 5
-    low_stock_items = db.query(models.Product).filter(models.Product.stock < 5).all()
-    
-    if low_stock_items:
-        # Usamos BackgroundTasks para que la web no se congele
-        background_tasks.add_task(send_stock_alert_email, low_stock_items)
-        return {"message": "Alerta procesada", "count": len(low_stock_items)}
-    
-    return {"message": "Stock correcto", "count": 0}
-
-# --- NUEVO ENDPOINT DE CHECKOUT (En main.py) ---
-@app.post("/checkout", tags=["Ventas"])
-def checkout(order: OrderSchema, db: Session = Depends(get_db)):
-    # 1. Validar y Restar Stock
-    for item in order.items:
-        db_product = db.query(models.Product).filter(models.Product.id == item.id).first()
-        if not db_product:
-            raise HTTPException(status_code=404, detail=f"Producto {item.name} no encontrado")
-        if db_product.stock < item.qty:
-            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {item.name}")
-        
-        db_product.stock -= item.qty
-
-    # 2. Guardar Pedido en Postgres
-    items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
-    db_order = models.Order(
-        user_email=order.user,
-        total=order.total,
-        items_summary=items_str,
-        address=order.address,
-        status="pending"
-    )
-    db.add(db_order)
-    db.commit()
-    db.refresh(db_order)
-    
-    return {"message": "Venta exitosa", "order_id": db_order.id}
-
-# --- NUEVO ENDPOINT PARA ADMIN (En main.py) ---
-@app.get("/admin/orders", response_model=List[Any], tags=["Ventas"])
-def get_admin_orders(db: Session = Depends(get_db), admin: models.User = Depends(check_admin)):
-    orders = db.query(models.Order).order_by(models.Order.id.desc()).all()
-    # Mapeamos para que el frontend reciba los nombres que espera
-    return [{
-        "id": o.id,
-        "user": o.user_email,
-        "total": o.total,
-        "date": o.date,
-        "items": o.items_summary,
-        "address": o.address,
-        "status": o.status
-    } for o in orders]
-
-# --- NUEVO ENDPOINT DE CHECKOUT (En main.py) ---
-@app.post("/checkout", tags=["Ventas"])
-def checkout(order: OrderSchema, db: Session = Depends(get_db)):
-    # 1. Validar y Restar Stock
-    for item in order.items:
-        db_product = db.query(models.Product).filter(models.Product.id == item.id).first()
-        if not db_product:
-            raise HTTPException(status_code=404, detail=f"Producto {item.name} no encontrado")
-        if db_product.stock < item.qty:
-            raise HTTPException(status_code=400, detail=f"Stock insuficiente para {item.name}")
-        
-        db_product.stock -= item.qty
-
-    # 2. Guardar Pedido en Postgres
-    items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
-    db_order = models.Order(
-        user_email=order.user,
-        total=order.total,
-        items_summary=items_str,
-        address=order.address,
-        status="pending"
-    )
-    db.add(db_order)
-    db.commit()
-    db.refresh(db_order)
-    
-    return {"message": "Venta exitosa", "order_id": db_order.id}
-
-# --- NUEVO ENDPOINT PARA ADMIN (En main.py) ---
-@app.get("/admin/orders", response_model=List[Any], tags=["Ventas"])
-def get_admin_orders(db: Session = Depends(get_db), admin: models.User = Depends(check_admin)):
-    orders = db.query(models.Order).order_by(models.Order.id.desc()).all()
-    # Mapeamos para que el frontend reciba los nombres que espera
-    return [{
-        "id": o.id,
-        "user": o.user_email,
-        "total": o.total,
-        "date": o.date,
-        "items": o.items_summary,
-        "address": o.address,
-        "status": o.status
-    } for o in orders]
-
-class StockUpdate(BaseModel):
-    stock: int
-
-@app.put("/admin/products/{product_id}/stock", tags=["Admin"])
-def update_product_stock(product_id: int, data: StockUpdate, admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
-    """Actualiza el stock de un producto manualmente desde el panel de admin"""
-    product = db.query(models.Product).filter(models.Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Producto no encontrado")
-    
-    product.stock = data.stock
-    db.commit()
-    db.refresh(product)
-    return product
-
-
-
-
 class InteractionSchema(BaseModel):
     product_id: int = None
     action_type: str
@@ -442,11 +268,48 @@ def track_interaction(interaction: InteractionSchema, user_id: int = None, db: S
     db.commit()
     return {"status": "tracked"}
 
-
-
-# Al final de backend/main.py
 @app.get("/admin/ai-insights", tags=["Admin"])
 def get_ai_insights(db: Session = Depends(get_db)):
-    # Importamos la función que escribimos antes en ml_core
     from ml_core import generate_business_insights
     return generate_business_insights(db)
+
+# --- SISTEMA DE CORREO (MAILTRAP) ---
+MAILTRAP_USER = "5f6569de0cb0aa" 
+MAILTRAP_PASS = "874209eb9cb322"
+
+def send_stock_alert_email(low_stock_products):
+    msg = MIMEMultipart()
+    msg['From'] = 'sistema@elgranodeoro.com'
+    msg['To'] = 'admin@elgranodeoro.com'
+    msg['Subject'] = "🚨 ALERTA: Reposición de Stock Necesaria"
+
+    cuerpo_items = ""
+    for p in low_stock_products:
+        cuerpo_items += f"• {p.name}: Quedan {p.stock} unidades\n"
+
+    cuerpo = f"""
+    Hola Administrador,
+    
+    Los siguientes productos están bajo mínimos (menos de 5 unidades):
+    
+    {cuerpo_items}
+    
+    Por favor, accede al panel de control para gestionar los pedidos.
+    """
+    msg.attach(MIMEText(cuerpo, 'plain'))
+
+    try:
+        with smtplib.SMTP("sandbox.smtp.mailtrap.io", 2525) as server:
+            server.login(MAILTRAP_USER, MAILTRAP_PASS)
+            server.send_message(msg)
+        print("✅ Correo de alerta enviado a Mailtrap")
+    except Exception as e:
+        print(f"❌ Error enviando correo: {e}")
+
+@app.get("/check-low-stock")
+def check_low_stock(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    low_stock_items = db.query(models.Product).filter(models.Product.stock < 5).all()
+    if low_stock_items:
+        background_tasks.add_task(send_stock_alert_email, low_stock_items)
+        return {"message": "Alerta procesada", "count": len(low_stock_items)}
+    return {"message": "Stock correcto", "count": 0}
