@@ -21,13 +21,19 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="API El Grano de Oro", description="Gestión de tienda, usuarios e IA Automática")
 
-# Configurar CORS
+# Lista de orígenes permitidos
+origins = [
+    "https://elgranodeorocondockerpruebas.onrender.com", # Tu frontend actual
+    "http://localhost:5173",                           # Para que sigas pudiendo probar en local
+    "http://localhost:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins, # <--- Aquí es donde sucede la magia
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],   # Permite GET, POST, OPTIONS, etc.
+    allow_headers=["*"],   # Permite todos los headers
 )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
