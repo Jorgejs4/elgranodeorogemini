@@ -13,3 +13,10 @@ requests
 emails
 apscheduler
 numpy<2.0.0
+# Testing
+pytest
+pytest-asyncio
+httpx
+pytest-cov
+# Migrations
+alembic
