@@ -57,7 +57,6 @@ const LanguageSelector = () => {
           ))}
         </div>
       )}
-      <div id="google_translate_element" className="hidden"></div>
     </div>
   );
 };
@@ -193,6 +192,7 @@ function App() {
   });
   const [addressSuggestions, setAddressSuggestions] = useState([]);
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+  const searchTimeout = useRef(null);
 
   const [payment, setPayment] = useState({ card: '', expiry: '', cvv: '', holder: '' });
   const [saveCard, setSaveCard] = useState(false);
@@ -224,17 +224,22 @@ function App() {
     loadRecommendations();
   }, [user, setRecommendations]);
 
-  // Lógica de Autocompletado Predictivo (Nominatim)
-  const handleAddressSearch = async (query) => {
+  // Autocompletado de dirección con Nominatim (OSM) - INSTANTÁNEO
+  const handleAddressSearch = (query) => {
     setShipping({ ...shipping, searchQuery: query });
-    if (query.length > 4) {
-        setIsSearchingAddress(true);
-        try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(query)}&limit=5&countrycodes=es`);
-            const data = await res.json();
-            setAddressSuggestions(data);
-        } catch (e) { console.log(e); }
-        finally { setIsSearchingAddress(false); }
+    
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+
+    if (query.length > 0) {
+        searchTimeout.current = setTimeout(async () => {
+            setIsSearchingAddress(true);
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(query)}&limit=5&countrycodes=es`);
+                const data = await res.json();
+                setAddressSuggestions(data);
+            } catch (e) { console.log(e); }
+            finally { setIsSearchingAddress(false); }
+        }, 300); // 300ms de calma para no saturar, pero parece instantáneo
     } else {
         setAddressSuggestions([]);
     }
@@ -430,7 +435,7 @@ function App() {
                        <div className="bg-zinc-900 p-8 rounded-3xl border border-zinc-800 shadow-xl">
                            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">🚚 Dirección de Envío</h3>
                            
-                           {/* Buscador Predictivo */}
+                           {/* Buscador Predictivo Instantáneo */}
                            <div className="relative mb-6">
                                <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mb-2">Buscador Inteligente</p>
                                <input 
@@ -441,7 +446,7 @@ function App() {
                                />
                                {isSearchingAddress && <div className="absolute right-4 top-10 text-amber-500 animate-spin text-xl">⏳</div>}
                                {addressSuggestions.length > 0 && (
-                                   <div className="absolute z-50 w-full bg-zinc-800 border border-zinc-700 rounded-xl mt-1 shadow-2xl overflow-hidden">
+                                   <div className="absolute z-50 w-full bg-zinc-800 border border-zinc-700 rounded-xl mt-1 shadow-2xl overflow-hidden max-h-60 overflow-y-auto">
                                        {addressSuggestions.map((s, idx) => (
                                            <button 
                                                 key={idx} 
@@ -457,7 +462,7 @@ function App() {
                            </div>
 
                            {/* Campos Desglosados */}
-                           <div className="grid grid-cols-4 gap-4">
+                           <div className="grid grid-cols-4 gap-4 animate-fade-in">
                                <div className="col-span-3">
                                    <p className="text-zinc-500 text-[10px] uppercase font-bold mb-1">Calle / Vía</p>
                                    <input className="premium-input w-full" value={shipping.street} onChange={e=>setShipping({...shipping, street: e.target.value})} required />
@@ -585,7 +590,21 @@ function App() {
         </Routes>
       </main>
 
-      <style>{`.premium-input { background: #09090b; border: 1px solid #27272a; color: white; padding: 0.8rem 1.2rem; border-radius: 1rem; outline: none; transition: 0.3s; } .premium-input:focus { border-color: #f59e0b; } .animate-fade-in { animation: fadeIn 0.4s ease-out; } @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      <style>{`
+        .premium-input { background: #09090b; border: 1px solid #27272a; color: white; padding: 0.8rem 1.2rem; border-radius: 1rem; outline: none; transition: 0.3s; } 
+        .premium-input:focus { border-color: #f59e0b; } 
+        .animate-fade-in { animation: fadeIn 0.4s ease-out; } 
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* LIMPIEZA GOOGLE TRANSLATE */
+        .goog-te-banner-frame.skiptranslate, .goog-te-gadget-icon { display: none !important; }
+        body { top: 0px !important; }
+        .goog-tooltip { display: none !important; }
+        .goog-tooltip:hover { display: none !important; }
+        .goog-text-highlight { background-color: transparent !important; border: none !important; box-shadow: none !important; }
+        #google_translate_element { display: none !important; }
+        .skiptranslate { display: none !important; }
+      `}</style>
       <ChatAssistant />
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} onLogin={(u) => { setUser(u); setShowAuth(false); }} />}
     </div>
