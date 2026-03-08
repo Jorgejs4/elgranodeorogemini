@@ -9,7 +9,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# Configurar el modelo
+# Usamos el nombre del modelo sin el prefijo 'models/' ya que la librería lo añade
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 # "Personalidad" del Barista Experto
@@ -33,8 +33,9 @@ def get_barista_response(user_message: str) -> str:
     
     try:
         # Combinamos el sistema de personalidad con el mensaje del usuario
-        full_prompt = f"{SYSTEM_PROMPT}\n\nCliente: {user_message}\nBarista:"
-        response = model.generate_content(full_prompt)
+        # Usamos generate_content de forma más robusta
+        chat = model.start_chat(history=[])
+        response = chat.send_message(f"{SYSTEM_PROMPT}\n\nCliente: {user_message}")
         return response.text.strip()
     except Exception as e:
         return f"☕ Perdona, ha ocurrido un pequeño error en mi cafetera mental: {str(e)}"
