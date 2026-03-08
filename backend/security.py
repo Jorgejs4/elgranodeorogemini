@@ -8,7 +8,8 @@ SECRET_KEY = "tu_clave_super_secreta_el_grano_de_oro"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-# Configuración de encriptación (Bcrypt)
+# Configuración de encriptación
+# Nota: Forzamos bcrypt para evitar problemas de compatibilidad en Windows
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password, hashed_password):

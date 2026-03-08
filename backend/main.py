@@ -16,7 +16,7 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 import ml_core, gemini_assistant
 
-# --- CONFIGURACIÓN DE LOGGING ---
+# --- CONFIGURACIÓN DE LOGGING (Sin Emojis para Windows) ---
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -27,34 +27,35 @@ logger = logging.getLogger("api_grano_oro")
 # Crear tablas automáticamente (Especial para SQLite local)
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="API El Grano de Oro", description="Gestión de tienda, usuarios e IA Automática")
+app = FastAPI(title="API El Grano de Oro", description="Gestion de tienda, usuarios e IA Automatica")
 
 # --- EVENTO DE ARRANQUE (Auto-Seed y Admin) ---
 @app.on_event("startup")
 async def startup_event():
-    logger.info("🚀 Iniciando servidor y verificando base de datos...")
+    logger.info("Iniciando servidor y verificando base de datos...")
     db = next(get_db())
     try:
         # 1. Crear Admin Maestro si no existe
         admin_email = "admin@admin.com"
         exists = db.query(models.User).filter(models.User.email == admin_email).first()
         if not exists:
+            # Usamos un hash manual o aseguramos que el password sea corto
             hashed_pwd = security.get_password_hash("admin123")
             admin_user = models.User(email=admin_email, hashed_password=hashed_pwd, role="admin")
             db.add(admin_user)
-            logger.info(f"✅ Usuario admin creado: {admin_email} / admin123")
+            logger.info(f"Usuario admin creado: {admin_email} / admin123")
         
-        # 2. Auto-llenar productos si está vacío
+        # 2. Auto-llenar productos si esta vacio
         prod_count = db.query(models.Product).count()
         if prod_count == 0:
-            logger.info("📦 Base de datos vacía. Iniciando auto-seed...")
+            logger.info("Base de datos vacia. Iniciando auto-seed...")
             from seed import seed_data
             seed_data(db)
-            logger.info("✅ Productos inyectados correctamente.")
+            logger.info("Productos inyectados correctamente.")
         
         db.commit()
     except Exception as e:
-        logger.error(f"❌ Error en el arranque: {e}")
+        logger.error(f"Error en el arranque: {str(e)}")
     finally:
         db.close()
 
@@ -74,12 +75,12 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # --- SCHEDULER ---
 def scheduled_retrain_job():
-    logger.info("🔄 [AUTO-SCHEDULER] Ejecutando reentrenamiento semanal...")
+    logger.info("[AUTO-SCHEDULER] Ejecutando reentrenamiento semanal...")
     try:
         ml_core.train_model() 
-        logger.info("✅ [AUTO-SCHEDULER] Modelo actualizado correctamente.")
+        logger.info("[AUTO-SCHEDULER] Modelo actualizado correctamente.")
     except Exception as e:
-        logger.error(f"❌ [AUTO-SCHEDULER] Error entrenando: {e}")
+        logger.error(f"[AUTO-SCHEDULER] Error entrenando: {e}")
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(scheduled_retrain_job, 'interval', weeks=1)
@@ -113,7 +114,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         payload = security.jwt.decode(token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
         user_id: str = payload.get("sub")
-        if user_id is None: raise HTTPException(status_code=401, detail="Token inválido")
+        if user_id is None: raise HTTPException(status_code=401, detail="Token invalido")
     except Exception: raise HTTPException(status_code=401, detail="No autorizado")
     user = db.query(models.User).filter(models.User.id == int(user_id)).first()
     if user is None: raise HTTPException(status_code=401, detail="Usuario no encontrado")
@@ -211,9 +212,9 @@ def check_low_stock(background_tasks: BackgroundTasks, db: Session = Depends(get
 
 MAILTRAP_USER = "5f6569de0cb0aa"; MAILTRAP_PASS = "874209eb9cb322"
 def send_stock_alert_email(low_stock_products):
-    msg = MIMEMultipart(); msg['From'] = 'sistema@elgranodeoro.com'; msg['To'] = 'admin@elgranodeoro.com'; msg['Subject'] = "🚨 ALERTA: Stock Bajo"
-    items = "\n".join([f"• {p.name}: {p.stock} uds" for p in low_stock_products])
-    msg.attach(MIMEText(f"Productos bajo mínimos:\n\n{items}", 'plain'))
+    msg = MIMEMultipart(); msg['From'] = 'sistema@elgranodeoro.com'; msg['To'] = 'admin@elgranodeoro.com'; msg['Subject'] = "ALERTA: Stock Bajo"
+    items = "\n".join([f"- {p.name}: {p.stock} uds" for p in low_stock_products])
+    msg.attach(MIMEText(f"Productos bajo minimos:\n\n{items}", 'plain'))
     try:
         with smtplib.SMTP("sandbox.smtp.mailtrap.io", 2525) as server:
             server.login(MAILTRAP_USER, MAILTRAP_PASS); server.send_message(msg)
