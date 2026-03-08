@@ -16,16 +16,8 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 import ml_core, gemini_assistant
 
-# --- CONFIGURACIÓN DE LOGGING ---
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("app.log")
-    ]
-)
-logger = logging.getLogger("api_grano_oro")
+# Crear tablas automáticamente (Especial para SQLite local)
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="API El Grano de Oro", description="Gestión de tienda, usuarios e IA Automática")
 
