@@ -27,9 +27,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("api_grano_oro")
 
-# Crear tablas (Deshabilitado para usar Alembic)
-# models.Base.metadata.create_all(bind=engine)
-
 app = FastAPI(title="API El Grano de Oro", description="Gestión de tienda, usuarios e IA Automática")
 
 @app.middleware("http")
@@ -40,15 +37,15 @@ async def log_requests(request, call_next):
     logger.info(f"Method: {request.method} Path: {request.url.path} Status: {response.status_code} Duration: {duration}")
     return response
 
-# --- SOLUCIÓN AL ERROR 500 Y CORS ---
+# --- CORS ---
 origins = [
-    "http://localhost:5173",  # Para cuando programas en tu PC
-    "https://elgranodeorocondockerpruebas.onrender.com", # Tu frontend online
+    "http://localhost:5173",
+    "https://elgranodeorocondockerpruebas.onrender.com",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, # Ya no usamos "*"
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -58,18 +55,18 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # --- SCHEDULER ---
 def scheduled_retrain_job():
-    print("🔄 [AUTO-SCHEDULER] Ejecutando reentrenamiento semanal...")
+    logger.info("🔄 [AUTO-SCHEDULER] Ejecutando reentrenamiento semanal...")
     try:
         ml_core.train_model() 
-        print("✅ [AUTO-SCHEDULER] Modelo actualizado correctamente.")
+        logger.info("✅ [AUTO-SCHEDULER] Modelo actualizado correctamente.")
     except Exception as e:
-        print(f"❌ [AUTO-SCHEDULER] Error entrenando: {e}")
+        logger.error(f"❌ [AUTO-SCHEDULER] Error entrenando: {e}")
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(scheduled_retrain_job, 'interval', weeks=1)
 scheduler.start()
 
-# --- ESQUEMAS PARA CHECKOUT ---
+# --- ESQUEMAS ---
 class OrderItemSchema(BaseModel):
     id: int
     name: str
@@ -81,6 +78,8 @@ class OrderSchema(BaseModel):
     total: float
     items: List[OrderItemSchema]
     address: str
+    save_card: Optional[bool] = False
+    card_info: Optional[schemas.CreditCardCreate] = None
 
 class InteractionSchema(BaseModel):
     product_id: int = None
@@ -89,21 +88,9 @@ class InteractionSchema(BaseModel):
 class ChatRequest(BaseModel):
     message: str
 
-# --- ASISTENTE VIRTUAL (AI) ---
-@app.post("/chat", tags=["IA"])
-async def chat_with_barista(request: ChatRequest):
-    """Endpoint para conversar con el Barista Experto (IA)."""
-    response = gemini_assistant.get_barista_response(request.message)
-    return {"reply": response}
-
 class StockUpdate(BaseModel):
     stock: int
 
-    # --- STOCK MANAGEMENT ---
-class StockUpdate(BaseModel):
-    stock: int
-
-# NUEVO: Esquemas para guardar todo el stock a la vez
 class BulkStockItem(BaseModel):
     id: int
     stock: int
@@ -159,7 +146,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         "email": user.email
     }
 
-# --- GESTIÓN DE PRODUCTOS ---
+# --- PRODUCTOS ---
 @app.get("/products/", response_model=List[schemas.ProductResponse], tags=["Productos"])
 def read_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_products(db, skip=skip, limit=limit)
@@ -178,40 +165,72 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Producto eliminado"}
 
-@app.put("/admin/products/{product_id}/stock", tags=["Admin"])
-def update_product_stock(product_id: int, data: StockUpdate, admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
-    product = db.query(models.Product).filter(models.Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Producto no encontrado")
-    product.stock = data.stock
+# --- TARJETAS ---
+@app.get("/cards", response_model=List[schemas.CreditCardResponse], tags=["Pagos"])
+def get_user_cards(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(models.CreditCard).filter(models.CreditCard.user_id == user.id).all()
+
+@app.post("/cards", response_model=schemas.CreditCardResponse, tags=["Pagos"])
+def save_card(card: schemas.CreditCardCreate, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db_card = models.CreditCard(
+        user_id=user.id,
+        card_holder=card.card_holder,
+        last_four=card.last_four,
+        exp_month=card.exp_month,
+        exp_year=card.exp_year,
+        brand=card.brand,
+        token=card.token
+    )
+    db.add(db_card)
     db.commit()
-    db.refresh(product)
-    return product
+    db.refresh(db_card)
+    return db_card
 
-
-@app.put("/admin/products/stock/bulk", tags=["Admin"])
-def update_bulk_stock(data: BulkStockRequest, admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
-    """Guarda todos los cambios de stock de una sola vez"""
-    for item in data.updates:
-        product = db.query(models.Product).filter(models.Product.id == item.id).first()
-        if product:
-            product.stock = item.stock
+@app.delete("/cards/{card_id}", tags=["Pagos"])
+def delete_card(card_id: int, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    card = db.query(models.CreditCard).filter(models.CreditCard.id == card_id, models.CreditCard.user_id == user.id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Tarjeta no encontrada")
+    db.delete(card)
     db.commit()
-    return {"message": "Todo el stock actualizado masivamente"}
+    return {"message": "Tarjeta eliminada"}
 
-# --- CHECKOUT Y PEDIDOS ---
+# --- CHECKOUT ---
 @app.post("/checkout", tags=["Ventas"])
 def checkout(order: OrderSchema, db: Session = Depends(get_db)):
+    # 1. Verificar Stock
     for item in order.items:
         db_product = db.query(models.Product).filter(models.Product.id == item.id).first()
-        if not db_product:
-            raise HTTPException(status_code=404, detail=f"Producto {item.name} no encontrado")
-        if db_product.stock < item.qty:
+        if not db_product or db_product.stock < item.qty:
             raise HTTPException(status_code=400, detail=f"Stock insuficiente para {item.name}")
         db_product.stock -= item.qty
 
+    # 2. Simular Pago (MOCK)
+    if order.card_info:
+        # Lógica de prueba: si empieza por 4242 es OK
+        if not order.card_info.last_four.endswith("42"):
+            # En un sistema real aquí fallaría el cargo
+            logger.info(f"Pago simulado fallido para tarjeta: {order.card_info.last_four}")
+            # Pero para el proyecto, dejaremos que pase si no es 4242 (puedes cambiar esto para fallos manuales)
+            pass
+        
+        # 3. Guardar Tarjeta si se solicita
+        if order.save_card:
+            user = db.query(models.User).filter(models.User.email == order.user).first()
+            if user:
+                # Evitar duplicados simples
+                exists = db.query(models.CreditCard).filter(models.CreditCard.user_id == user.id, models.CreditCard.last_four == order.card_info.last_four).first()
+                if not exists:
+                    db_card = models.CreditCard(
+                        user_id=user.id, card_holder=order.card_info.card_holder,
+                        last_four=order.card_info.last_four, exp_month=order.card_info.exp_month,
+                        exp_year=order.card_info.exp_year, brand=order.card_info.brand,
+                        token=order.card_info.token
+                    )
+                    db.add(db_card)
+
+    # 4. Crear Pedido
     items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
-    
     db_order = models.Order(
         user_email=order.user,
         total=order.total,
@@ -226,115 +245,56 @@ def checkout(order: OrderSchema, db: Session = Depends(get_db)):
     
     return {"message": "Venta exitosa", "order_id": db_order.id}
 
-@app.get("/admin/orders", response_model=List[Any], tags=["Ventas"])
+# --- ADMIN ROUTES ---
+@app.get("/admin/orders", response_model=List[Any], tags=["Admin"])
 def get_admin_orders(db: Session = Depends(get_db), admin: models.User = Depends(check_admin)):
     orders = db.query(models.Order).order_by(models.Order.id.desc()).all()
     return [{
-        "id": o.id,
-        "user": o.user_email,
-        "total": o.total,
-        "date": o.date,
-        "items": o.items_summary,
-        "address": o.address,
-        "status": o.status
+        "id": o.id, "user": o.user_email, "total": o.total, "date": o.date,
+        "items": o.items_summary, "address": o.address, "status": o.status
     } for o in orders]
 
-@app.put("/admin/orders/{order_id}/ship", tags=["Ventas"])
-def ship_admin_order(order_id: int, admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
-    if order:
-        order.status = "shipped"
-        db.commit()
-    return {"message": "Pedido procesado y enviado"}
-
-@app.delete("/admin/orders/clear", tags=["Ventas"])
-def clear_all_orders(admin: models.User = Depends(check_admin)):
-    return {"message": "Historial limpiado"}
-
-# --- INTERACCIONES E IA ---
-@app.post("/track", tags=["Analytics"])
-def track_interaction(interaction: InteractionSchema, user_id: int = None, db: Session = Depends(get_db)):
-    db_interaction = models.Interaction(
-        user_id=user_id,
-        product_id=interaction.product_id,
-        action_type=interaction.action_type
-    )
-    db.add(db_interaction)
+@app.put("/admin/products/stock/bulk", tags=["Admin"])
+def update_bulk_stock(data: BulkStockRequest, admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
+    for item in data.updates:
+        product = db.query(models.Product).filter(models.Product.id == item.id).first()
+        if product: product.stock = item.stock
     db.commit()
-    return {"status": "tracked"}
-
-@app.get("/recommendations/", response_model=List[schemas.ProductResponse], tags=["IA"])
-def get_recommendations_route(user_id: Optional[int] = None, db: Session = Depends(get_db)):
-    import ml_core
-    if not user_id:
-        # Filtro stock > 0 añadido
-        return db.query(models.Product).filter(models.Product.stock > 0).limit(4).all()
-    rec_ids = ml_core.get_recommendations(user_id, db)
-    # Filtro stock > 0 añadido
-    return db.query(models.Product).filter(models.Product.id.in_(rec_ids), models.Product.stock > 0).all()
-
-
-@app.post("/admin/seed-ai-data", tags=["Admin"])
-def seed_ai_data(admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
-    """Genera ventas e interacciones falsas en el pasado para que la IA tenga datos que analizar"""
-    import random
-    from datetime import timedelta
-    
-    products = db.query(models.Product).all()
-    if not products: return {"message": "Crea productos primero"}
-    
-    # Generar 200 interacciones (Vistas, carritos, compras)
-    actions = ["view", "add_to_cart", "purchase"]
-    for _ in range(2000):
-        inter = models.Interaction(user_id=admin.id, product_id=random.choice(products).id, action_type=random.choice(actions))
-        db.add(inter)
-        
-    # Generar 50 pedidos históricos repartidos en el último año
-    for i in range(500):
-        d = datetime.utcnow() - timedelta(days=random.randint(0, 365), hours=random.randint(0,23))
-        order = models.Order(
-            user_email=admin.email, total=round(random.uniform(15.0, 150.0), 2),
-            items_summary="Pedido de entrenamiento IA", address="Simulación IA",
-            status="shipped", date=d
-        )
-        db.add(order)
-    db.commit()
-    ml_core.train_model(db)
-    return {"message": "Datos inyectados. ¡La IA ya tiene comida!"}
+    return {"message": "Stock actualizado masivamente"}
 
 @app.get("/admin/ai-insights", tags=["Admin"])
 def get_ai_insights(db: Session = Depends(get_db)):
     from ml_core import generate_business_insights
     return generate_business_insights(db)
 
-@app.post("/train", tags=["IA"])
-def train_model(background_tasks: BackgroundTasks):
-    background_tasks.add_task(scheduled_retrain_job)
-    return {"message": "Entrenamiento iniciado en segundo plano"}  
+# --- IA Y CHAT ---
+@app.post("/chat", tags=["IA"])
+async def chat_with_barista(request: ChatRequest):
+    response = gemini_assistant.get_barista_response(request.message)
+    return {"reply": response}
 
-# --- SISTEMA DE CORREO (MAILTRAP) ---
+@app.get("/recommendations/", response_model=List[schemas.ProductResponse], tags=["IA"])
+def get_recommendations_route(user_id: Optional[int] = None, db: Session = Depends(get_db)):
+    if not user_id:
+        return db.query(models.Product).filter(models.Product.stock > 0).limit(4).all()
+    rec_ids = ml_core.get_recommendations(user_id, db)
+    return db.query(models.Product).filter(models.Product.id.in_(rec_ids), models.Product.stock > 0).all()
+
+# --- EMAILS Y ALERTAS ---
 MAILTRAP_USER = "5f6569de0cb0aa" 
 MAILTRAP_PASS = "874209eb9cb322"
 
 def send_stock_alert_email(low_stock_products):
     msg = MIMEMultipart()
-    msg['From'] = 'sistema@elgranodeoro.com'
-    msg['To'] = 'admin@elgranodeoro.com'
+    msg['From'] = 'sistema@elgranodeoro.com'; msg['To'] = 'admin@elgranodeoro.com'
     msg['Subject'] = "🚨 ALERTA: Reposición de Stock Necesaria"
-
-    cuerpo_items = ""
-    for p in low_stock_products:
-        cuerpo_items += f"• {p.name}: Quedan {p.stock} unidades\n"
-
-    cuerpo = f"Hola Administrador,\n\nLos siguientes productos están bajo mínimos:\n\n{cuerpo_items}\n\nPor favor, repón el stock."
-    msg.attach(MIMEText(cuerpo, 'plain'))
-
+    items = "\n".join([f"• {p.name}: {p.stock} uds" for p in low_stock_products])
+    msg.attach(MIMEText(f"Productos bajo mínimos:\n\n{items}", 'plain'))
     try:
         with smtplib.SMTP("sandbox.smtp.mailtrap.io", 2525) as server:
             server.login(MAILTRAP_USER, MAILTRAP_PASS)
             server.send_message(msg)
-    except Exception as e:
-        print(f"❌ Error enviando correo: {e}")
+    except Exception as e: logger.error(f"Error email: {e}")
 
 @app.get("/check-low-stock")
 def check_low_stock(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):

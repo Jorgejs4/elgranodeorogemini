@@ -40,6 +40,25 @@ class User(UserBase):
 UserResponse = User
 
 # ==========================
+# ESQUEMAS DE TARJETAS
+# ==========================
+class CreditCardBase(BaseModel):
+    card_holder: str
+    last_four: str
+    exp_month: str
+    exp_year: str
+    brand: str
+
+class CreditCardCreate(CreditCardBase):
+    token: str # En producción esto vendría de Stripe/PayPal
+
+class CreditCardResponse(CreditCardBase):
+    id: int
+    user_id: int
+    class Config:
+        from_attributes = True
+
+# ==========================
 # ESQUEMAS DE INTERACCIONES
 # ==========================
 class InteractionBase(BaseModel):
@@ -57,5 +76,4 @@ class Interaction(InteractionBase):
     class Config:
         from_attributes = True
 
-# ESTA LÍNEA ES LA QUE SOLUCIONA TU ERROR
 InteractionResponse = Interaction

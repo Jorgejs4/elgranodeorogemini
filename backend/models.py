@@ -16,6 +16,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     
     interactions = relationship("Interaction", back_populates="user")
+    cards = relationship("CreditCard", back_populates="user", cascade="all, delete-orphan")
 
 # --- 2. Tabla de Productos ---
 class Product(Base):
@@ -28,7 +29,6 @@ class Product(Base):
     price = Column(Float, nullable=False)
     stock = Column(Integer, default=10)
     category = Column(String, index=True)
-    # Imagen por defecto de café real para que la web luzca bien
     image_url = Column(String, default="https://images.unsplash.com/photo-1559056199-641a0ac8b55e?q=80&w=400")
 
     interactions = relationship("Interaction", back_populates="product")
@@ -44,10 +44,11 @@ class Interaction(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     action = Column(String, default="view") 
     action_type = Column(String, default="view")
+    
     user = relationship("User", back_populates="interactions")
     product = relationship("Product", back_populates="interactions")
 
-# --- 4. Tabla de Pedidos (Añadir al final de models.py) ---
+# --- 4. Tabla de Pedidos ---
 class Order(Base):
     __tablename__ = "orders"
     __table_args__ = {'extend_existing': True}
@@ -56,8 +57,22 @@ class Order(Base):
     user_email = Column(String, index=True)
     total = Column(Float, nullable=False)
     date = Column(DateTime(timezone=True), server_default=func.now())
-    items_summary = Column(String)  # Guardaremos "2x Café, 1x Prensa"
+    items_summary = Column(String)
     address = Column(String)
-    status = Column(String, default="pending") # pending, shipped
+    status = Column(String, default="pending")
 
+# --- 5. Tabla de Tarjetas ---
+class CreditCard(Base):
+    __tablename__ = "credit_cards"
+    __table_args__ = {'extend_existing': True}
 
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    card_holder = Column(String)
+    last_four = Column(String)
+    exp_month = Column(String)
+    exp_year = Column(String)
+    brand = Column(String)
+    token = Column(String)
+
+    user = relationship("User", back_populates="cards")

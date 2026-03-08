@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import ProductCard from './ProductCard';
 import ChatAssistant from './ChatAssistant';
 import useStore, { API_BASE_URL } from './store/useStore';
 
-// --- COMPONENTE SELECTOR DE IDIOMAS (Sin cambios lógicos) ---
+// --- COMPONENTE SELECTOR DE IDIOMAS ---
 const LanguageSelector = () => {
   const [isOpen, setIsOpen] = useState(false);
   const languages = [
@@ -16,19 +16,7 @@ const LanguageSelector = () => {
     { code: 'zh-CN', flag: 'https://flagcdn.com/cn.svg', name: '中文' }
   ];
 
-  const setLanguageCookie = (langCode) => {
-    const domain = window.location.hostname;
-    if (langCode === 'es') {
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${domain}`;
-    } else {
-      document.cookie = `googtrans=/es/${langCode}; path=/;`;
-      document.cookie = `googtrans=/es/${langCode}; path=/; domain=.${domain}`;
-    }
-    window.location.reload(); 
-  };
-
-  const [currentLangCode] = useState(() => {
+  const [currentLangCode, setCurrentLangCode] = useState(() => {
     const name = 'googtrans';
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
@@ -38,6 +26,19 @@ const LanguageSelector = () => {
     }
     return 'es';
   });
+
+  const setLanguageCookie = (langCode) => {
+    const domain = window.location.hostname;
+    if (langCode === 'es') {
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${domain}`;
+    } else {
+      document.cookie = `googtrans=/es/${langCode}; path=/;`;
+      document.cookie = `googtrans=/es/${langCode}; path=/; domain=.${domain}`;
+    }
+    setCurrentLangCode(langCode);
+    window.location.reload(); 
+  };
 
   const currentLang = languages.find(l => l.code === currentLangCode) || languages[0];
 
@@ -180,13 +181,29 @@ function App() {
   const [showAuth, setShowAuth] = useState(false); 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
-  const [shipping, setShipping] = useState({ address: '', city: '', country: '', zip: '' });
+  
+  // Estados para Checkout
+  const [shipping, setShipping] = useState({ address: '', city: '', zip: '' });
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
   const [payment, setPayment] = useState({ card: '', expiry: '', cvv: '', holder: '' });
-  const [useNewCard, setUseNewCard] = useState(false);
+  const [saveCard, setSaveCard] = useState(false);
+  const [savedCards, setSavedCards] = useState([]);
+  const [selectedCardId, setSelectedCardId] = useState('new');
+  
   const [stockEdits, setStockEdits] = useState({});
 
   useEffect(() => {
     fetchProducts();
+    if (user) {
+        // Cargar tarjetas guardadas
+        fetch(`${API_BASE_URL}/cards`, { headers: { 'Authorization': `Bearer ${user.token}` } })
+            .then(res => res.json())
+            .then(data => setSavedCards(Array.isArray(data) ? data : []))
+            .catch(e => console.log(e));
+    }
+  }, [user, fetchProducts]);
+
+  useEffect(() => {
     const loadRecommendations = async () => {
       try {
         let urlRec = `${API_BASE_URL}/recommendations/`;
@@ -197,41 +214,41 @@ function App() {
       } catch (err) { console.error(err); }
     };
     loadRecommendations();
-  }, [user, fetchProducts, setRecommendations]);
+  }, [user, setRecommendations]);
 
-  useEffect(() => {
-    if (user && user.role === 'admin' && location.pathname === '/admin') {
-      const fetchAdminData = async () => {
+  // Autocompletado de dirección con Nominatim (OSM)
+  const handleAddressChange = async (val) => {
+    setShipping({ ...shipping, address: val });
+    if (val.length > 5) {
         try {
-          const res = await fetch(`${API_BASE_URL}/admin/orders`, { headers: { 'Authorization': `Bearer ${user.token}` } });
-          setOrders(await res.json());
-          const resAi = await fetch(`${API_BASE_URL}/admin/ai-insights`, { headers: { 'Authorization': `Bearer ${user.token}` } });
-          setAiInsights(await resAi.json());
-        } catch (err) { console.error(err); }
-      };
-      fetchAdminData();
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=5&countrycodes=es`);
+            const data = await res.json();
+            setAddressSuggestions(data);
+        } catch (e) { console.log(e); }
+    } else {
+        setAddressSuggestions([]);
     }
-  }, [user, location.pathname, setOrders, setAiInsights]);
-
-  const handleBulkUpdateStock = async () => {
-      const updates = Object.keys(stockEdits).map(id => ({ id: parseInt(id), stock: stockEdits[id] }));
-      try {
-          const res = await fetch(`${API_BASE_URL}/admin/products/stock/bulk`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-              body: JSON.stringify({ updates })
-          });
-          if(res.ok) {
-              alert("✅ Stock actualizado.");
-              setStockEdits({}); 
-              fetchProducts();
-          }
-      } catch(err) { console.error(err); }
   };
 
   const processPayment = async (e) => {
     e.preventDefault();
     if(cart.length === 0) return;
+    
+    let cardInfo = null;
+    if (selectedCardId === 'new') {
+        cardInfo = {
+            card_holder: payment.holder,
+            last_four: payment.card.slice(-4),
+            exp_month: payment.expiry.split('/')[0],
+            exp_year: payment.expiry.split('/')[1] || '20',
+            brand: payment.card.startsWith('4') ? 'visa' : 'mastercard',
+            token: 'mock_token_' + Math.random().toString(36).substr(2, 9)
+        };
+    } else {
+        const sc = savedCards.find(c => c.id === parseInt(selectedCardId));
+        cardInfo = { ...sc, token: sc.token || 'saved_token' };
+    }
+
     try {
         const response = await fetch(`${API_BASE_URL}/checkout`, {
             method: 'POST',
@@ -240,15 +257,17 @@ function App() {
                 user: user.email,
                 items: cart.map(item => ({ id: item.id, name: item.name, qty: item.qty, price: item.price })),
                 total: cart.reduce((acc, item) => acc + item.price * item.qty, 0),
-                address: `${shipping.address}, ${shipping.city}, ${shipping.zip}`
+                address: shipping.address,
+                save_card: saveCard,
+                card_info: cardInfo
             })
         });
         if (response.ok) {
-            alert(`🎉 ¡Pedido confirmado!`);
+            alert(`🎉 ¡Pedido confirmado! Hemos procesado el pago correctamente.`);
             clearCart(); navigate("/"); fetchProducts();
         } else {
             const err = await response.json();
-            alert(`Error: ${err.detail}`);
+            alert(`Error en el pago: ${err.detail}`);
         }
     } catch (err) { console.error(err); }
   };
@@ -377,25 +396,110 @@ function App() {
           } />
           <Route path="/checkout" element={
              <div className="max-w-7xl mx-auto px-4 mt-10 pb-20">
-               <h2 className="text-3xl font-serif font-bold text-amber-500 mb-8 text-center">Finalizar Pedido</h2>
-               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                   <form id="checkout-form" onSubmit={processPayment} className="lg:col-span-2 space-y-8">
-                       <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
-                           <h3 className="text-xl font-bold text-white mb-6">🚚 Envío</h3>
-                           <div className="space-y-4">
-                               <input className="premium-input w-full" placeholder="Dirección" required onChange={e => setShipping({...shipping, address: e.target.value})} />
-                               <div className="flex gap-4">
-                                   <input className="premium-input w-1/2" placeholder="Ciudad" required onChange={e => setShipping({...shipping, city: e.target.value})} />
-                                   <input className="premium-input w-1/2" placeholder="CP" required onChange={e => setShipping({...shipping, zip: e.target.value})} />
-                               </div>
+               <h2 className="text-3xl font-serif font-bold text-amber-500 mb-8 text-center italic">Finalizar Pedido</h2>
+               <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                   {/* SECCIÓN IZQUIERDA: DATOS */}
+                   <div className="lg:col-span-2 space-y-8">
+                       {/* ENVÍO */}
+                       <div className="bg-zinc-900 p-8 rounded-3xl border border-zinc-800 shadow-xl relative">
+                           <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">🚚 Dirección de Envío</h3>
+                           <div className="relative">
+                               <input 
+                                    className="premium-input w-full" 
+                                    placeholder="Escribe tu dirección (Autocompletado real)..." 
+                                    value={shipping.address}
+                                    onChange={(e) => handleAddressChange(e.target.value)}
+                                    required 
+                               />
+                               {addressSuggestions.length > 0 && (
+                                   <div className="absolute z-50 w-full bg-zinc-800 border border-zinc-700 rounded-xl mt-1 shadow-2xl overflow-hidden">
+                                       {addressSuggestions.map((s, idx) => (
+                                           <button 
+                                                key={idx} 
+                                                type="button"
+                                                onClick={() => { setShipping({ ...shipping, address: s.display_name }); setAddressSuggestions([]); }}
+                                                className="w-full text-left px-4 py-3 hover:bg-amber-600 hover:text-black transition text-sm border-b border-zinc-700 last:border-0"
+                                           >
+                                               {s.display_name}
+                                           </button>
+                                       ))}
+                                   </div>
+                               )}
                            </div>
                        </div>
-                       <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
-                           <h3 className="text-xl font-bold text-white mb-6">💳 Pago</h3>
-                           <input className="premium-input w-full mb-4" placeholder="Tarjeta" required onChange={e => setPayment({...payment, card: e.target.value})} />
-                           <button type="submit" className="w-full bg-amber-600 text-black font-bold py-4 rounded-xl hover:bg-amber-500 shadow-lg">Confirmar {cartTotal.toFixed(2)}€</button>
+
+                       {/* PAGO */}
+                       <div className="bg-zinc-900 p-8 rounded-3xl border border-zinc-800 shadow-xl">
+                           <h3 className="text-xl font-bold text-white mb-6">💳 Método de Pago</h3>
+                           
+                           {/* Selección de Tarjeta Guardada */}
+                           {savedCards.length > 0 && (
+                               <div className="mb-6 space-y-3">
+                                   <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-2">Tarjetas Guardadas</p>
+                                   {savedCards.map(c => (
+                                       <label key={c.id} className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition ${selectedCardId === c.id ? 'bg-amber-600/10 border-amber-500' : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700'}`}>
+                                           <div className="flex items-center gap-4">
+                                               <input type="radio" name="card" checked={selectedCardId === c.id} onChange={() => setSelectedCardId(c.id)} className="text-amber-500 focus:ring-amber-500 bg-zinc-900" />
+                                               <div>
+                                                   <p className="text-white font-bold uppercase text-sm">{c.brand} **** {c.last_four}</p>
+                                                   <p className="text-zinc-500 text-xs">{c.card_holder} | Exp: {c.exp_month}/{c.exp_year}</p>
+                                               </div>
+                                           </div>
+                                           <span className="text-zinc-700">🔒</span>
+                                       </label>
+                                   ))}
+                                   <label className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition ${selectedCardId === 'new' ? 'bg-amber-600/10 border-amber-500' : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700'}`}>
+                                       <input type="radio" name="card" checked={selectedCardId === 'new'} onChange={() => setSelectedCardId('new')} className="text-amber-500 focus:ring-amber-500 bg-zinc-900" />
+                                       <span className="text-white font-bold text-sm">Usar otra tarjeta</span>
+                                   </label>
+                               </div>
+                           )}
+
+                           {/* Formulario Nueva Tarjeta */}
+                           {selectedCardId === 'new' && (
+                               <div className="space-y-4 animate-fade-in">
+                                   <input className="premium-input w-full" placeholder="Nombre en la tarjeta" value={payment.holder} onChange={e => setPayment({...payment, holder: e.target.value})} required={selectedCardId === 'new'} />
+                                   <input className="premium-input w-full" placeholder="Número de tarjeta (Pruéba 4242...)" value={payment.card} onChange={e => setPayment({...payment, card: e.target.value})} required={selectedCardId === 'new'} />
+                                   <div className="flex gap-4">
+                                       <input className="premium-input w-1/2" placeholder="MM/YY" value={payment.expiry} onChange={e => setPayment({...payment, expiry: e.target.value})} required={selectedCardId === 'new'} />
+                                       <input className="premium-input w-1/2" placeholder="CVV" value={payment.cvv} onChange={e => setPayment({...payment, cvv: e.target.value})} required={selectedCardId === 'new'} />
+                                   </div>
+                                   <label className="flex items-center gap-3 cursor-pointer group mt-4">
+                                       <input type="checkbox" checked={saveCard} onChange={e => setSaveCard(e.target.checked)} className="w-5 h-5 rounded border-zinc-700 bg-zinc-900 text-amber-500 focus:ring-amber-500" />
+                                       <span className="text-zinc-400 text-sm group-hover:text-white transition">Guardar esta tarjeta para mis próximas compras</span>
+                                   </label>
+                               </div>
+                           )}
                        </div>
-                   </form>
+                   </div>
+
+                   {/* SECCIÓN DERECHA: RESUMEN */}
+                   <div className="space-y-6">
+                       <div className="bg-zinc-900 p-8 rounded-3xl border border-zinc-800 shadow-xl sticky top-24">
+                           <h3 className="text-xl font-bold text-white mb-6">Resumen del Pedido</h3>
+                           <div className="space-y-4 mb-6">
+                               {cart.map(i => (
+                                   <div key={i.id} className="flex justify-between text-sm">
+                                       <span className="text-zinc-400">{i.qty}x {i.name}</span>
+                                       <span className="text-white">{(i.price * i.qty).toFixed(2)}€</span>
+                                   </div>
+                               ))}
+                           </div>
+                           <div className="border-t border-zinc-800 pt-6 mb-8">
+                               <div className="flex justify-between items-end">
+                                   <span className="text-zinc-500 uppercase text-xs font-bold tracking-widest">Total a Pagar</span>
+                                   <span className="text-3xl font-serif text-amber-500 font-bold">{cartTotal.toFixed(2)}€</span>
+                               </div>
+                           </div>
+                           <button 
+                                onClick={processPayment}
+                                className="w-full bg-gradient-to-r from-amber-600 to-yellow-500 text-black font-black py-4 rounded-xl hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-amber-900/20 uppercase tracking-widest"
+                           >
+                               Confirmar y Pagar
+                           </button>
+                           <p className="text-[10px] text-zinc-600 text-center mt-4">Pago seguro cifrado SSL de 256 bits</p>
+                       </div>
+                   </div>
                </div>
              </div>
           } />
@@ -437,35 +541,42 @@ function App() {
         </Routes>
       </main>
 
-      <style>{`.premium-input { background: #09090b; border: 1px solid #27272a; color: white; padding: 0.8rem 1.2rem; border-radius: 1rem; outline: none; transition: 0.3s; } .premium-input:focus { border-color: #f59e0b; }`}</style>
+      <style>{`.premium-input { background: #09090b; border: 1px solid #27272a; color: white; padding: 0.8rem 1.2rem; border-radius: 1rem; outline: none; transition: 0.3s; } .premium-input:focus { border-color: #f59e0b; } .animate-fade-in { animation: fadeIn 0.4s ease-out; } @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
       <ChatAssistant />
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} onLogin={(u) => { setUser(u); setShowAuth(false); }} />}
     </div>
   );
 }
 
-// --- MODAL DE AUTH (Simplificado) ---
+// --- MODAL DE AUTH ---
 function AuthModal({ onClose, onLogin }) {
     const [isReg, setIsReg] = useState(false); const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
     const submit = async (e) => {
         e.preventDefault();
         try {
-            const form = new URLSearchParams(); form.append('username', email); form.append('password', password);
-            const res = await fetch(`${API_BASE_URL}/token`, { method: 'POST', body: form });
-            const data = await res.json();
-            if(res.ok) onLogin({ email, id: data.user_id, role: data.role, token: data.access_token });
-            else alert("Error en el acceso");
-        } catch(err) { console.error(err); }
+            if(isReg) {
+                const res = await fetch(`${API_BASE_URL}/users/`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email, password}) });
+                if(!res.ok) throw new Error("Error registrando usuario");
+                alert("Cuenta creada."); setIsReg(false);
+            } else {
+                const form = new URLSearchParams(); form.append('username', email); form.append('password', password);
+                const res = await fetch(`${API_BASE_URL}/token`, { method: 'POST', body: form });
+                if(!res.ok) throw new Error("Credenciales inválidas");
+                const data = await res.json();
+                onLogin({ email, id: data.user_id, role: data.role, token: data.access_token });
+            }
+        } catch(err) { alert(err.message); }
     };
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-md bg-black/60">
-            <div className="bg-zinc-900 p-10 rounded-3xl border border-zinc-700 w-full max-w-md relative">
-                <h2 className="text-3xl font-serif text-amber-500 mb-6 text-center font-bold">{isReg?"Registro":"Acceso"}</h2>
+            <div className="bg-zinc-900 p-10 rounded-3xl border border-zinc-700 w-full max-w-md relative shadow-2xl">
+                <h2 className="text-3xl font-serif text-amber-500 mb-6 text-center font-bold italic">{isReg?"Registro":"Acceso"}</h2>
                 <form onSubmit={submit} className="space-y-4">
                     <input className="premium-input w-full" type="email" placeholder="Email" onChange={e=>setEmail(e.target.value)} required />
                     <input className="premium-input w-full" type="password" placeholder="Contraseña" onChange={e=>setPassword(e.target.value)} required />
-                    <button className="w-full bg-amber-600 text-black font-bold py-4 rounded-xl mt-4">Entrar</button>
+                    <button className="w-full bg-amber-600 text-black font-bold py-4 rounded-xl mt-4 hover:bg-amber-500 transition shadow-lg">{isReg?"Registrar":"Entrar"}</button>
                 </form>
+                <div className="mt-6 text-center text-zinc-500 text-sm cursor-pointer hover:text-white transition" onClick={()=>setIsReg(!isReg)}>{isReg?"¿Ya tienes cuenta? Entra":"¿No tienes cuenta? Regístrate"}</div>
                 <button onClick={onClose} className="absolute top-4 right-4 text-zinc-500 hover:text-white">✕</button>
             </div>
         </div>
