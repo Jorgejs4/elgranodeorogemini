@@ -14,7 +14,7 @@ import pandas as pd
 import logging
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
-import ml_core
+import ml_core, gemini_assistant
 
 # --- CONFIGURACIÓN DE LOGGING ---
 logging.basicConfig(
@@ -85,6 +85,16 @@ class OrderSchema(BaseModel):
 class InteractionSchema(BaseModel):
     product_id: int = None
     action_type: str
+
+class ChatRequest(BaseModel):
+    message: str
+
+# --- ASISTENTE VIRTUAL (AI) ---
+@app.post("/chat", tags=["IA"])
+async def chat_with_barista(request: ChatRequest):
+    """Endpoint para conversar con el Barista Experto (IA)."""
+    response = gemini_assistant.get_barista_response(request.message)
+    return {"reply": response}
 
 class StockUpdate(BaseModel):
     stock: int

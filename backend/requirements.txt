@@ -20,3 +20,5 @@ httpx
 pytest-cov
 # Migrations
 alembic
+# AI Assistant
+google-generativeai

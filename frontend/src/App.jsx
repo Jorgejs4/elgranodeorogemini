@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import ProductCard from './ProductCard';
+import ChatAssistant from './ChatAssistant';
 import useStore, { API_BASE_URL } from './store/useStore';
 
 // --- COMPONENTE SELECTOR DE IDIOMAS (Sin cambios lógicos) ---
@@ -437,6 +438,7 @@ function App() {
       </main>
 
       <style>{`.premium-input { background: #09090b; border: 1px solid #27272a; color: white; padding: 0.8rem 1.2rem; border-radius: 1rem; outline: none; transition: 0.3s; } .premium-input:focus { border-color: #f59e0b; }`}</style>
+      <ChatAssistant />
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} onLogin={(u) => { setUser(u); setShowAuth(false); }} />}
     </div>
   );
