@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
+import ProductCard from './ProductCard';
 
 // --- CONFIGURACIÓN DE URL ---
 const API_BASE_URL = 'https://grano-oro-api.onrender.com';
@@ -743,70 +744,4 @@ function App() {
 }
 
 // --- COMPONENTS EXTRA ---
-function ProductCard({ product, onClick, onAdd, onBuy, recommended, isLiked, onLike }) {
-    return (
-        <div className={`group bg-zinc-900/40 rounded-3xl overflow-hidden border transition-all duration-500 hover:bg-zinc-900/80 ${recommended ? 'border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]' : 'border-zinc-800'}`}>
-            <div className="relative h-72 overflow-hidden cursor-pointer" onClick={onClick}>
-                <img src={product.image_url || "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?q=80&w=400"} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-1000 group-hover:scale-110" alt={product.name} />
-                <button onClick={(e) => { e.stopPropagation(); onLike(product); }} className="absolute top-4 right-4 text-2xl drop-shadow-lg transition hover:scale-125 z-20">
-                    {isLiked ? <span className="text-amber-500">♥</span> : <span className="text-zinc-300">♡</span>}
-                </button>
-                <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black p-6">
-                    <div className="flex justify-between items-end">
-                      <div>
-                        <h3 className="text-xl font-bold text-white mb-1 truncate max-w-[150px]">{product.name}</h3>
-                        <span className="text-zinc-400 text-xs uppercase tracking-wider">Stock: {product.stock}</span>
-                      </div>
-                      <span className="text-amber-400 font-bold text-lg">{product.price}€</span>
-                    </div>
-                </div>
-            </div>
-            <div className="p-6">
-                <div className="flex gap-3">
-                   <button onClick={(e)=>{ e.stopPropagation(); onAdd(product); }} disabled={product.stock <= 0} className={`flex-1 py-3 rounded-xl font-bold text-sm transition ${product.stock > 0 ? 'bg-zinc-800 text-white hover:bg-zinc-700' : 'bg-zinc-900 text-zinc-600 cursor-not-allowed border border-zinc-800'}`}>
-                     {product.stock > 0 ? 'Añadir' : 'Agotado'}
-                   </button>
-                   <button onClick={(e)=>{ e.stopPropagation(); onBuy(product); }} disabled={product.stock <= 0} className={`flex-1 py-3 rounded-xl font-bold text-sm transition ${product.stock > 0 ? 'bg-amber-600 text-black hover:bg-amber-500' : 'bg-zinc-900 text-zinc-600 cursor-not-allowed border border-zinc-800'}`}>Comprar</button>
-                </div>
-            </div>
-        </div>
-    )
-}
-
-function AuthModal({ onClose, onLogin }) {
-    const [isReg, setIsReg] = useState(false); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [error, setError] = useState("");
-    const submit = async (e) => {
-        e.preventDefault(); setError("");
-        try {
-            if(isReg) {
-                const res = await fetch(`${API_BASE_URL}/users/`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email, password}) });
-                if(!res.ok) throw new Error("Error registrando usuario");
-                alert("Cuenta creada."); setIsReg(false);
-            } else {
-                const form = new URLSearchParams(); form.append('username', email); form.append('password', password);
-                const res = await fetch(`${API_BASE_URL}/token`, { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: form });
-                if(!res.ok) throw new Error("Credenciales inválidas");
-                const data = await res.json();
-                onLogin({ email: email, id: data.user_id, role: data.role || 'client', token: data.access_token });
-            }
-        } catch(err) { setError(err.message); }
-    };
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-md">
-            <div className="absolute inset-0 bg-black/60" onClick={onClose}></div>
-            <div className="relative bg-zinc-900 p-10 rounded-3xl border border-zinc-700 w-full max-w-md shadow-2xl">
-                <h2 className="text-3xl font-serif text-amber-500 mb-6 text-center italic font-bold">{isReg?"Crear Cuenta":"Bienvenido"}</h2>
-                {error && <p className="text-red-400 text-center mb-4 text-sm bg-red-900/20 p-3 rounded-lg border border-red-900/50">{error}</p>}
-                <form onSubmit={submit} className="space-y-4">
-                    <input className="premium-input w-full" type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
-                    <input className="premium-input w-full" type="password" placeholder="Contraseña" value={password} onChange={e=>setPassword(e.target.value)} required />
-                    <button className="w-full bg-amber-600 text-black font-bold py-4 rounded-xl mt-4 hover:bg-amber-500 transition shadow-lg">{isReg?"Registrar":"Acceder"}</button>
-                </form>
-                <div className="mt-6 text-center text-zinc-400 text-sm cursor-pointer hover:text-white transition" onClick={()=>setIsReg(!isReg)}>{isReg?"¿Ya tienes cuenta?":"¿Crear cuenta?"}</div>
-                <button onClick={onClose} className="absolute top-4 right-4 text-zinc-500 hover:text-white transition text-xl">✕</button>
-            </div>
-        </div>
-    )
-}
-
 export default App;
