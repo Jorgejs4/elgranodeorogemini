@@ -15,8 +15,8 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 import ml_core
 
-# Crear tablas
-models.Base.metadata.create_all(bind=engine)
+# Crear tablas (Deshabilitado para usar Alembic)
+# models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="API El Grano de Oro", description="Gestión de tienda, usuarios e IA Automática")
 
