@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-// URL Base para la API
-const API_BASE_URL = 'https://grano-oro-api.onrender.com';
+// URL Base para la API (Local para desarrollo)
+const API_BASE_URL = 'http://localhost:8000';
 
 const useStore = create(
   persist(

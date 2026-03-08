@@ -182,9 +182,18 @@ function App() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   
-  // Estados para Checkout
-  const [shipping, setShipping] = useState({ address: '', city: '', zip: '' });
+  // Estados para Checkout Desglosado
+  const [shipping, setShipping] = useState({ 
+    street: '', 
+    number: '', 
+    city: '', 
+    state: '', 
+    zip: '', 
+    searchQuery: '' 
+  });
   const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+
   const [payment, setPayment] = useState({ card: '', expiry: '', cvv: '', holder: '' });
   const [saveCard, setSaveCard] = useState(false);
   const [savedCards, setSavedCards] = useState([]);
@@ -195,7 +204,6 @@ function App() {
   useEffect(() => {
     fetchProducts();
     if (user) {
-        // Cargar tarjetas guardadas
         fetch(`${API_BASE_URL}/cards`, { headers: { 'Authorization': `Bearer ${user.token}` } })
             .then(res => res.json())
             .then(data => setSavedCards(Array.isArray(data) ? data : []))
@@ -216,18 +224,34 @@ function App() {
     loadRecommendations();
   }, [user, setRecommendations]);
 
-  // Autocompletado de dirección con Nominatim (OSM)
-  const handleAddressChange = async (val) => {
-    setShipping({ ...shipping, address: val });
-    if (val.length > 5) {
+  // Lógica de Autocompletado Predictivo (Nominatim)
+  const handleAddressSearch = async (query) => {
+    setShipping({ ...shipping, searchQuery: query });
+    if (query.length > 4) {
+        setIsSearchingAddress(true);
         try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=5&countrycodes=es`);
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(query)}&limit=5&countrycodes=es`);
             const data = await res.json();
             setAddressSuggestions(data);
         } catch (e) { console.log(e); }
+        finally { setIsSearchingAddress(false); }
     } else {
         setAddressSuggestions([]);
     }
+  };
+
+  const selectAddress = (s) => {
+    const addr = s.address;
+    setShipping({
+        ...shipping,
+        street: addr.road || addr.pedestrian || addr.suburb || '',
+        number: addr.house_number || '',
+        city: addr.city || addr.town || addr.village || '',
+        state: addr.province || addr.state || '',
+        zip: addr.postcode || '',
+        searchQuery: s.display_name
+    });
+    setAddressSuggestions([]);
   };
 
   const processPayment = async (e) => {
@@ -249,6 +273,8 @@ function App() {
         cardInfo = { ...sc, token: sc.token || 'saved_token' };
     }
 
+    const fullAddress = `${shipping.street} ${shipping.number}, ${shipping.city}, ${shipping.state}, ${shipping.zip}`;
+
     try {
         const response = await fetch(`${API_BASE_URL}/checkout`, {
             method: 'POST',
@@ -257,17 +283,17 @@ function App() {
                 user: user.email,
                 items: cart.map(item => ({ id: item.id, name: item.name, qty: item.qty, price: item.price })),
                 total: cart.reduce((acc, item) => acc + item.price * item.qty, 0),
-                address: shipping.address,
+                address: fullAddress,
                 save_card: saveCard,
                 card_info: cardInfo
             })
         });
         if (response.ok) {
-            alert(`🎉 ¡Pedido confirmado! Hemos procesado el pago correctamente.`);
+            alert(`🎉 ¡Pedido confirmado! Pago realizado con éxito.`);
             clearCart(); navigate("/"); fetchProducts();
         } else {
             const err = await response.json();
-            alert(`Error en el pago: ${err.detail}`);
+            alert(`Error: ${err.detail}`);
         }
     } catch (err) { console.error(err); }
   };
@@ -400,25 +426,28 @@ function App() {
                <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
                    {/* SECCIÓN IZQUIERDA: DATOS */}
                    <div className="lg:col-span-2 space-y-8">
-                       {/* ENVÍO */}
-                       <div className="bg-zinc-900 p-8 rounded-3xl border border-zinc-800 shadow-xl relative">
+                       {/* ENVÍO DESGLOSADO */}
+                       <div className="bg-zinc-900 p-8 rounded-3xl border border-zinc-800 shadow-xl">
                            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">🚚 Dirección de Envío</h3>
-                           <div className="relative">
+                           
+                           {/* Buscador Predictivo */}
+                           <div className="relative mb-6">
+                               <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mb-2">Buscador Inteligente</p>
                                <input 
                                     className="premium-input w-full" 
-                                    placeholder="Escribe tu dirección (Autocompletado real)..." 
-                                    value={shipping.address}
-                                    onChange={(e) => handleAddressChange(e.target.value)}
-                                    required 
+                                    placeholder="Empieza a escribir tu dirección..." 
+                                    value={shipping.searchQuery}
+                                    onChange={(e) => handleAddressSearch(e.target.value)}
                                />
+                               {isSearchingAddress && <div className="absolute right-4 top-10 text-amber-500 animate-spin text-xl">⏳</div>}
                                {addressSuggestions.length > 0 && (
                                    <div className="absolute z-50 w-full bg-zinc-800 border border-zinc-700 rounded-xl mt-1 shadow-2xl overflow-hidden">
                                        {addressSuggestions.map((s, idx) => (
                                            <button 
                                                 key={idx} 
                                                 type="button"
-                                                onClick={() => { setShipping({ ...shipping, address: s.display_name }); setAddressSuggestions([]); }}
-                                                className="w-full text-left px-4 py-3 hover:bg-amber-600 hover:text-black transition text-sm border-b border-zinc-700 last:border-0"
+                                                onClick={() => selectAddress(s)}
+                                                className="w-full text-left px-4 py-3 hover:bg-amber-600 hover:text-black transition text-xs border-b border-zinc-700 last:border-0"
                                            >
                                                {s.display_name}
                                            </button>
@@ -426,13 +455,35 @@ function App() {
                                    </div>
                                )}
                            </div>
+
+                           {/* Campos Desglosados */}
+                           <div className="grid grid-cols-4 gap-4">
+                               <div className="col-span-3">
+                                   <p className="text-zinc-500 text-[10px] uppercase font-bold mb-1">Calle / Vía</p>
+                                   <input className="premium-input w-full" value={shipping.street} onChange={e=>setShipping({...shipping, street: e.target.value})} required />
+                               </div>
+                               <div className="col-span-1">
+                                   <p className="text-zinc-500 text-[10px] uppercase font-bold mb-1">Nº</p>
+                                   <input className="premium-input w-full" value={shipping.number} onChange={e=>setShipping({...shipping, number: e.target.value})} required />
+                               </div>
+                               <div className="col-span-2">
+                                   <p className="text-zinc-500 text-[10px] uppercase font-bold mb-1">Ciudad</p>
+                                   <input className="premium-input w-full" value={shipping.city} onChange={e=>setShipping({...shipping, city: e.target.value})} required />
+                               </div>
+                               <div className="col-span-1">
+                                   <p className="text-zinc-500 text-[10px] uppercase font-bold mb-1">C.P.</p>
+                                   <input className="premium-input w-full" value={shipping.zip} onChange={e=>setShipping({...shipping, zip: e.target.value})} required />
+                               </div>
+                               <div className="col-span-1">
+                                   <p className="text-zinc-500 text-[10px] uppercase font-bold mb-1">Provincia</p>
+                                   <input className="premium-input w-full" value={shipping.state} onChange={e=>setShipping({...shipping, state: e.target.value})} required />
+                               </div>
+                           </div>
                        </div>
 
                        {/* PAGO */}
                        <div className="bg-zinc-900 p-8 rounded-3xl border border-zinc-800 shadow-xl">
                            <h3 className="text-xl font-bold text-white mb-6">💳 Método de Pago</h3>
-                           
-                           {/* Selección de Tarjeta Guardada */}
                            {savedCards.length > 0 && (
                                <div className="mb-6 space-y-3">
                                    <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-2">Tarjetas Guardadas</p>
@@ -454,8 +505,6 @@ function App() {
                                    </label>
                                </div>
                            )}
-
-                           {/* Formulario Nueva Tarjeta */}
                            {selectedCardId === 'new' && (
                                <div className="space-y-4 animate-fade-in">
                                    <input className="premium-input w-full" placeholder="Nombre en la tarjeta" value={payment.holder} onChange={e => setPayment({...payment, holder: e.target.value})} required={selectedCardId === 'new'} />
@@ -491,12 +540,7 @@ function App() {
                                    <span className="text-3xl font-serif text-amber-500 font-bold">{cartTotal.toFixed(2)}€</span>
                                </div>
                            </div>
-                           <button 
-                                onClick={processPayment}
-                                className="w-full bg-gradient-to-r from-amber-600 to-yellow-500 text-black font-black py-4 rounded-xl hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-amber-900/20 uppercase tracking-widest"
-                           >
-                               Confirmar y Pagar
-                           </button>
+                           <button onClick={processPayment} className="w-full bg-gradient-to-r from-amber-600 to-yellow-500 text-black font-black py-4 rounded-xl hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-amber-900/20 uppercase tracking-widest">Confirmar y Pagar</button>
                            <p className="text-[10px] text-zinc-600 text-center mt-4">Pago seguro cifrado SSL de 256 bits</p>
                        </div>
                    </div>
