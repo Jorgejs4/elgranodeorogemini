@@ -87,14 +87,29 @@ async def log_requests(request, call_next):
     return response
 
 # --- CORS ---
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+frontend_url = os.getenv("FRONTEND_URL", "").strip()
 origins = [
     "http://localhost:5173", 
     "http://127.0.0.1:5173",
     "https://elgranodeorocondockerpruebas.onrender.com",
-    frontend_url
+    "https://elgranodeorogemini.vercel.app"
 ]
-app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+if frontend_url:
+    origins.append(frontend_url)
+    # Si la URL tiene barra final, añadir también la versión sin barra
+    if frontend_url.endswith("/"):
+        origins.append(frontend_url[:-1])
+    else:
+        origins.append(frontend_url + "/")
+
+app.add_middleware(
+    CORSMiddleware, 
+    allow_origins=origins, 
+    allow_credentials=True, 
+    allow_methods=["*"], 
+    allow_headers=["*"]
+)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
