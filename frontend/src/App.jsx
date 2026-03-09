@@ -350,6 +350,12 @@ function App() {
   const [showAuth, setShowAuth] = useState(false); 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  // Cerrar menú al navegar
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [location]);
 
   // Función para manejar Checkout con protección de sesión
   const handleProtectedCheckout = () => {
@@ -629,18 +635,30 @@ function App() {
       <nav className="fixed w-full top-0 z-50 bg-[#050505]/95 backdrop-blur-3xl border-b border-[#d4af37]/10">
         <div className="max-w-[1800px] mx-auto px-4 md:px-8">
           <div className="flex items-center justify-between h-20 md:h-28 relative">
-            <div className="flex items-center gap-2 sm:gap-10">
-               <LanguageSelector />
+            
+            {/* LADO IZQUIERDO: HAMBURGUESA (MOVIL) / IDIOMA (DESKTOP) */}
+            <div className="flex items-center gap-2 md:gap-10">
+               <button 
+                 onClick={() => setIsMenuOpen(!isMenuOpen)} 
+                 className="md:hidden w-10 h-10 flex items-center justify-center text-[#d4af37] text-2xl"
+               >
+                 {isMenuOpen ? "✕" : "☰"}
+               </button>
+               <div className="hidden md:flex">
+                 <LanguageSelector />
+               </div>
                {user && user.role === 'admin' && (
                  <Link to="/admin" className="hidden lg:block text-[9px] font-black uppercase tracking-[0.4em] text-[#d4af37] hover:text-white transition-colors">Administración</Link>
                )}
             </div>
             
+            {/* CENTRO: LOGO */}
             <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center group w-max" onClick={() => setSearch("")}>
               <h1 className="text-xl sm:text-3xl md:text-5xl font-serif font-bold tracking-tight text-[#d4af37] group-hover:text-[#d4af37] transition-all duration-500 uppercase">EL GRANO DE ORO</h1>
               <span className="text-[5px] sm:text-[7px] uppercase tracking-[0.4em] sm:tracking-[0.8em] text-white font-black -mt-0.5 md:-mt-1">TOSTADORES DESDE 1920</span>
             </Link>
 
+            {/* LADO DERECHO: ACCIONES */}
             <div className="flex items-center gap-1 sm:gap-6">
                <div className="flex items-center gap-0 sm:gap-2">
                    <Link to="/wishlist" className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center text-white/40 hover:text-[#d4af37] transition-all">
@@ -651,14 +669,34 @@ function App() {
                      {cart.length > 0 && <span className="absolute top-1 right-1 md:top-2 md:right-2 bg-[#d4af37] text-black text-[7px] md:text-[8px] font-black w-3.5 h-3.5 md:w-4 md:h-4 flex items-center justify-center rounded-full shadow-lg">{cart.reduce((a,c)=>a+c.qty,0)}</span>}
                    </Link>
                </div>
-               {user ? (
-                 <button onClick={logout} className="text-[8px] md:text-[9px] font-black text-[#d4af37] hover:text-white ml-2 md:ml-4 uppercase tracking-[0.2em] md:tracking-[0.3em]">Salir</button>
-               ) : (
-                 <button onClick={() => setShowAuth(true)} className="ml-2 md:ml-4 text-[8px] md:text-[9px] font-black uppercase tracking-[0.2em] md:tracking-[0.3em] text-[#d4af37] border border-[#d4af37]/30 px-3 md:px-8 py-2 md:py-2.5 rounded-full hover:bg-[#d4af37] hover:text-black transition-all whitespace-nowrap">Entrar</button>
-               )}
+               <div className="hidden md:flex items-center">
+                 {user ? (
+                   <button onClick={logout} className="text-[9px] font-black text-[#d4af37] hover:text-white ml-4 uppercase tracking-[0.3em]">Salir</button>
+                 ) : (
+                   <button onClick={() => setShowAuth(true)} className="ml-4 text-[9px] font-black uppercase tracking-[0.3em] text-[#d4af37] border border-[#d4af37]/30 px-8 py-2.5 rounded-full hover:bg-[#d4af37] hover:text-black transition-all whitespace-nowrap">Entrar</button>
+                 )}
+               </div>
             </div>
           </div>
         </div>
+
+        {/* MENÚ MÓVIL DESPLEGABLE */}
+        {isMenuOpen && (
+          <div className="md:hidden bg-[#050505] border-b border-[#d4af37]/20 py-6 px-4 flex flex-col items-center gap-6 animate-fade-in shadow-2xl">
+            <div className="flex items-center gap-4 border-b border-zinc-800 pb-4 w-full justify-center">
+              <span className="text-zinc-500 text-[10px] uppercase font-black tracking-widest">Idioma</span>
+              <LanguageSelector />
+            </div>
+            {user && user.role === 'admin' && (
+              <Link to="/admin" className="text-xs font-black uppercase tracking-[0.3em] text-[#d4af37]">Panel de Administración</Link>
+            )}
+            {user ? (
+              <button onClick={logout} className="text-xs font-black text-red-500 uppercase tracking-[0.3em]">Cerrar Sesión</button>
+            ) : (
+              <button onClick={() => setShowAuth(true)} className="text-xs font-black uppercase tracking-[0.3em] text-[#d4af37] bg-[#d4af37]/10 w-full py-4 rounded-xl border border-[#d4af37]/30">Iniciar Sesión</button>
+            )}
+          </div>
+        )}
       </nav>
 
       <main className="pt-20 pb-12">
