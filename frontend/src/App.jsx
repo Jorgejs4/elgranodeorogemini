@@ -627,34 +627,34 @@ function App() {
       
       {/* BARRA DE NAVEGACIÓN ESTILO CADILLAC */}
       <nav className="fixed w-full top-0 z-50 bg-[#050505]/95 backdrop-blur-3xl border-b border-[#d4af37]/10">
-        <div className="max-w-[1800px] mx-auto px-8">
-          <div className="flex items-center justify-between h-28 relative">
-            <div className="flex items-center gap-10">
+        <div className="max-w-[1800px] mx-auto px-4 md:px-8">
+          <div className="flex items-center justify-between h-20 md:h-28 relative">
+            <div className="flex items-center gap-2 sm:gap-10">
                <LanguageSelector />
                {user && user.role === 'admin' && (
                  <Link to="/admin" className="hidden lg:block text-[9px] font-black uppercase tracking-[0.4em] text-[#d4af37] hover:text-white transition-colors">Administración</Link>
                )}
             </div>
             
-            <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center group" onClick={() => setSearch("")}>
-              <h1 className="text-4xl md:text-5xl font-serif font-bold tracking-tight text-[#d4af37] group-hover:text-[#d4af37] transition-all duration-500 uppercase">EL GRANO DE ORO</h1>
-              <span className="text-[7px] uppercase tracking-[0.8em] text-white font-black -mt-1">TOSTADORES DESDE 1920</span>
+            <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center group w-max" onClick={() => setSearch("")}>
+              <h1 className="text-xl sm:text-3xl md:text-5xl font-serif font-bold tracking-tight text-[#d4af37] group-hover:text-[#d4af37] transition-all duration-500 uppercase">EL GRANO DE ORO</h1>
+              <span className="text-[5px] sm:text-[7px] uppercase tracking-[0.4em] sm:tracking-[0.8em] text-white font-black -mt-0.5 md:-mt-1">TOSTADORES DESDE 1920</span>
             </Link>
 
-            <div className="flex items-center gap-6">
-               <div className="flex items-center gap-2">
-                   <Link to="/wishlist" className="w-12 h-12 flex items-center justify-center text-white/40 hover:text-[#d4af37] transition-all">
-                     <span className="text-2xl font-light">♥</span>
+            <div className="flex items-center gap-1 sm:gap-6">
+               <div className="flex items-center gap-0 sm:gap-2">
+                   <Link to="/wishlist" className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center text-white/40 hover:text-[#d4af37] transition-all">
+                     <span className="text-xl md:text-2xl font-light">♥</span>
                    </Link>
-                   <Link to="/cart" className="relative w-12 h-12 flex items-center justify-center text-white hover:text-[#d4af37] transition-all">
-                     <span className="text-2xl font-light">🛒</span>
-                     {cart.length > 0 && <span className="absolute top-2 right-2 bg-[#d4af37] text-black text-[8px] font-black w-4 h-4 flex items-center justify-center rounded-full shadow-lg">{cart.reduce((a,c)=>a+c.qty,0)}</span>}
+                   <Link to="/cart" className="relative w-10 h-10 md:w-12 md:h-12 flex items-center justify-center text-white hover:text-[#d4af37] transition-all">
+                     <span className="text-xl md:text-2xl font-light">🛒</span>
+                     {cart.length > 0 && <span className="absolute top-1 right-1 md:top-2 md:right-2 bg-[#d4af37] text-black text-[7px] md:text-[8px] font-black w-3.5 h-3.5 md:w-4 md:h-4 flex items-center justify-center rounded-full shadow-lg">{cart.reduce((a,c)=>a+c.qty,0)}</span>}
                    </Link>
                </div>
                {user ? (
-                 <button onClick={logout} className="text-[9px] font-black text-[#d4af37] hover:text-white ml-4 uppercase tracking-[0.3em]">Cerrar Sesión</button>
+                 <button onClick={logout} className="text-[8px] md:text-[9px] font-black text-[#d4af37] hover:text-white ml-2 md:ml-4 uppercase tracking-[0.2em] md:tracking-[0.3em]">Salir</button>
                ) : (
-                 <button onClick={() => setShowAuth(true)} className="ml-4 text-[9px] font-black uppercase tracking-[0.3em] text-[#d4af37] border border-[#d4af37]/30 px-8 py-2.5 rounded-full hover:bg-[#d4af37] hover:text-black transition-all">Iniciar Sesión</button>
+                 <button onClick={() => setShowAuth(true)} className="ml-2 md:ml-4 text-[8px] md:text-[9px] font-black uppercase tracking-[0.2em] md:tracking-[0.3em] text-[#d4af37] border border-[#d4af37]/30 px-3 md:px-8 py-2 md:py-2.5 rounded-full hover:bg-[#d4af37] hover:text-black transition-all whitespace-nowrap">Entrar</button>
                )}
             </div>
           </div>
