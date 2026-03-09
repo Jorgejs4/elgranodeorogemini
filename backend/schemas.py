@@ -72,8 +72,21 @@ class InteractionCreate(InteractionBase):
 class Interaction(InteractionBase):
     id: int
     timestamp: datetime
-
     class Config:
         from_attributes = True
+
+# --- ESQUEMAS DE RESEÑAS ---
+class ReviewCreate(BaseModel):
+    product_id: int
+    user_name: str
+    rating: int
+    comment: str
+
+class ReviewResponse(ReviewCreate):
+    id: int
+    date: datetime
+    class Config:
+        from_attributes = True
+
 
 InteractionResponse = Interaction

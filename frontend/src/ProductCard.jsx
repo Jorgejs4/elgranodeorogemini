@@ -1,7 +1,15 @@
+import toast from 'react-hot-toast';
+
 const ProductCard = ({ product, isRecommended, onAdd, onBuy, onClick, isLiked, onLike }) => {
   const handleAddToCart = (e) => {
     e.stopPropagation();
-    if (onAdd) onAdd(product);
+    if (onAdd) {
+        onAdd(product);
+        toast.success(`${product.name} añadido a la cesta`, {
+            style: { background: '#18181b', color: '#fff', border: '1px solid #27272a' },
+            icon: '🛒'
+        });
+    }
   };
 
   const handleBuyNow = (e) => {
@@ -9,20 +17,37 @@ const ProductCard = ({ product, isRecommended, onAdd, onBuy, onClick, isLiked, o
     if (onBuy) onBuy(product);
   };
 
+  const handleLike = (e) => {
+    e.stopPropagation();
+    if(onLike) {
+        onLike(product);
+        toast(isLiked ? "Eliminado de favoritos" : "Añadido a favoritos", {
+            icon: '♥',
+            style: { background: '#18181b', color: '#fff' }
+        });
+    }
+  };
+
   return (
     <div 
       onClick={onClick}
-      className={`relative group p-4 rounded-xl bg-[#1A1A1A] border ${isRecommended ? 'border-[#D4AF37]' : 'border-white/5'} transition-all duration-500 hover:scale-105 cursor-pointer`}
+      className={`relative group p-4 rounded-xl bg-[#1A1A1A] border ${isRecommended ? 'border-[#D4AF37]' : 'border-white/5'} transition-all duration-500 hover:scale-105 cursor-pointer ${product.stock <= 0 ? 'grayscale opacity-60' : ''}`}
     >
       
-      {isRecommended && (
+      {isRecommended && product.stock > 0 && (
         <span className="absolute -top-2 -right-2 bg-[#D4AF37] text-black text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-tighter z-10">
           Especial para ti
         </span>
       )}
 
+      {product.stock <= 0 && (
+        <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-zinc-800 text-white text-[10px] font-black px-4 py-2 rounded-lg uppercase tracking-widest z-30 border border-zinc-700 shadow-2xl">
+          Agotado
+        </span>
+      )}
+
       <button 
-        onClick={(e) => { e.stopPropagation(); if(onLike) onLike(product); }} 
+        onClick={handleLike} 
         className="absolute top-4 right-4 text-2xl drop-shadow-lg transition hover:scale-125 z-20"
       >
         {isLiked ? <span className="text-amber-500">♥</span> : <span className="text-zinc-300">♡</span>}

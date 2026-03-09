@@ -20,4 +20,4 @@ pytest-cov
 # Migrations
 alembic
 # AI Assistant
-google-generativeai
+google-generativeai>=0.8.0

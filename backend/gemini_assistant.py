@@ -9,8 +9,8 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# Usamos el nombre del modelo sin el prefijo 'models/' ya que la librería lo añade
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Usamos 'gemma-3-4b-it' que es un modelo abierto (Open Model) y suele tener menos restricciones de cuota
+model = genai.GenerativeModel('gemma-3-4b-it')
 
 # "Personalidad" del Barista Experto
 SYSTEM_PROMPT = """

@@ -76,3 +76,20 @@ class CreditCard(Base):
     token = Column(String)
 
     user = relationship("User", back_populates="cards")
+
+# --- 6. Tabla de Reseñas ---
+class Review(Base):
+    __tablename__ = "reviews"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    user_name = Column(String, default="Cliente Anónimo")
+    rating = Column(Integer, default=5) # 1 a 5 estrellas
+    comment = Column(String)
+    date = Column(DateTime, default=datetime.utcnow)
+
+    product = relationship("Product", back_populates="reviews")
+
+# Actualizar Product para incluir la relación con reviews
+Product.reviews = relationship("Review", back_populates="product", cascade="all, delete-orphan")
