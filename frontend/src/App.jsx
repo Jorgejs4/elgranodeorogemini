@@ -706,7 +706,7 @@ function App() {
                        <div className="relative w-full h-[60vh] flex items-center justify-center overflow-hidden mb-16">
                            <img src="https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=1600" alt="Hero" className="absolute inset-0 w-full h-full object-cover grayscale brightness-50" />
                            <div className="relative z-10 text-center px-4">
-                               <h2 className="text-5xl md:text-8xl font-serif font-black mb-6 bg-gradient-to-b text-[#d4af37] bg-clip-text text-transparent">EL GRANO DE ORO</h2>
+                               <h2 className="text-5xl md:text-8xl font-serif font-black mb-6 bg-gradient-to-b from-amber-200 to-amber-600 bg-clip-text text-transparent">EL GRANO DE ORO</h2>
                                <p className="text-white text-lg md:text-2xl font-light tracking-[0.5em] uppercase">Especialistas en Café</p>
                            </div>
                        </div>

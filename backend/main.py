@@ -13,6 +13,7 @@ from email.mime.multipart import MIMEMultipart
 import pandas as pd
 import logging
 import random
+import os
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 import ml_core, gemini_assistant
