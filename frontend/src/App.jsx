@@ -622,32 +622,39 @@ function App() {
   const cartTotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-amber-500 selection:text-black">
-      <Toaster position="top-center" reverseOrder={false} toastOptions={{ style: { background: '#18181b', color: '#fff', border: '1px solid #27272a' } }} />
-      {/* NAVBAR */}
-      <nav className="fixed w-full top-0 z-50 bg-black/80 backdrop-blur-md border-b border-zinc-800">
-        <div className="max-w-7xl mx-auto px-4 text-sm md:text-base">
-          <div className="flex items-center justify-between h-20">
-            <Link to="/" className="flex items-center gap-2" onClick={() => setSearch("")}>
-              <h1 className="text-2xl font-serif font-bold bg-gradient-to-r from-amber-400 to-yellow-600 bg-clip-text text-transparent">El Grano de Oro</h1>
-            </Link>
-            <div className="flex items-center gap-2 md:gap-4">
+    <div className="min-h-screen bg-[#050505] text-[#ffffff] font-sans selection:bg-[#d4af37] selection:text-black">
+      <Toaster position="top-center" reverseOrder={false} toastOptions={{ style: { background: '#080808', color: '#fff', border: '1px solid #d4af37' } }} />
+      
+      {/* BARRA DE NAVEGACIÓN ESTILO CADILLAC */}
+      <nav className="fixed w-full top-0 z-50 bg-[#050505]/95 backdrop-blur-3xl border-b border-[#d4af37]/10">
+        <div className="max-w-[1800px] mx-auto px-8">
+          <div className="flex items-center justify-between h-28 relative">
+            <div className="flex items-center gap-10">
                <LanguageSelector />
                {user && user.role === 'admin' && (
-                 <Link to="/admin" className="hidden md:block px-4 py-2 text-sm font-bold text-amber-500 border border-amber-500/50 rounded-full hover:bg-amber-500 hover:text-black transition-all">⚙️ Admin</Link>
+                 <Link to="/admin" className="hidden lg:block text-[9px] font-black uppercase tracking-[0.4em] text-[#d4af37] hover:text-white transition-colors">Administración</Link>
                )}
-               <Link to="/wishlist" className="relative p-2">
-                 <span className={`text-2xl ${wishlist.length > 0 ? 'text-amber-500' : 'text-zinc-300'}`}>♥</span>
-                 {wishlist.length > 0 && <span className="absolute top-0 right-0 bg-zinc-100 text-black text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">{wishlist.length}</span>}
-               </Link>
-               <Link to="/cart" className="relative p-2">
-                 <span className="text-2xl text-zinc-300">🛒</span>
-                 {cart.length > 0 && <span className="absolute top-0 right-0 bg-amber-600 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full animate-pulse">{cart.reduce((a,c)=>a+c.qty,0)}</span>}
-               </Link>
+            </div>
+            
+            <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center group" onClick={() => setSearch("")}>
+              <h1 className="text-4xl md:text-5xl font-serif font-bold tracking-tight text-[#d4af37] group-hover:text-[#d4af37] transition-all duration-500 uppercase">EL GRANO DE ORO</h1>
+              <span className="text-[7px] uppercase tracking-[0.8em] text-white font-black -mt-1">TOSTADORES DESDE 1920</span>
+            </Link>
+
+            <div className="flex items-center gap-6">
+               <div className="flex items-center gap-2">
+                   <Link to="/wishlist" className="w-12 h-12 flex items-center justify-center text-white/40 hover:text-[#d4af37] transition-all">
+                     <span className="text-2xl font-light">♥</span>
+                   </Link>
+                   <Link to="/cart" className="relative w-12 h-12 flex items-center justify-center text-white hover:text-[#d4af37] transition-all">
+                     <span className="text-2xl font-light">🛒</span>
+                     {cart.length > 0 && <span className="absolute top-2 right-2 bg-[#d4af37] text-black text-[8px] font-black w-4 h-4 flex items-center justify-center rounded-full shadow-lg">{cart.reduce((a,c)=>a+c.qty,0)}</span>}
+                   </Link>
+               </div>
                {user ? (
-                 <button onClick={logout} className="text-xs font-bold text-zinc-400 hover:text-amber-500 ml-2 uppercase tracking-wider border-l border-zinc-700 pl-4">SALIR</button>
+                 <button onClick={logout} className="text-[9px] font-black text-[#d4af37] hover:text-white ml-4 uppercase tracking-[0.3em]">Cerrar Sesión</button>
                ) : (
-                 <button onClick={() => setShowAuth(true)} className="bg-amber-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-amber-500 transition shadow-lg">Entrar</button>
+                 <button onClick={() => setShowAuth(true)} className="ml-4 text-[9px] font-black uppercase tracking-[0.3em] text-[#d4af37] border border-[#d4af37]/30 px-8 py-2.5 rounded-full hover:bg-[#d4af37] hover:text-black transition-all">Iniciar Sesión</button>
                )}
             </div>
           </div>
@@ -699,8 +706,8 @@ function App() {
                        <div className="relative w-full h-[60vh] flex items-center justify-center overflow-hidden mb-16">
                            <img src="https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=1600" alt="Hero" className="absolute inset-0 w-full h-full object-cover grayscale brightness-50" />
                            <div className="relative z-10 text-center px-4">
-                               <h2 className="text-5xl md:text-8xl font-serif font-black mb-6 bg-gradient-to-b from-amber-100 to-amber-600 bg-clip-text text-transparent">EL GRANO DE ORO</h2>
-                               <p className="text-amber-500 text-lg md:text-2xl font-light tracking-[0.5em] uppercase">Especialistas en Café</p>
+                               <h2 className="text-5xl md:text-8xl font-serif font-black mb-6 bg-gradient-to-b text-[#d4af37] bg-clip-text text-transparent">EL GRANO DE ORO</h2>
+                               <p className="text-white text-lg md:text-2xl font-light tracking-[0.5em] uppercase">Especialistas en Café</p>
                            </div>
                        </div>
                        <div className="max-w-7xl mx-auto px-4">
@@ -742,13 +749,13 @@ function App() {
                            </div>
                            {recommendations.length > 0 && category === 'all' && (
                                <section className="mb-16">
-                                   <h2 className="text-2xl font-serif text-amber-500 mb-6 flex items-center gap-4 italic">{user ? "Para ti" : "Destacados"}<div className="h-px bg-amber-900/30 flex-1"></div></h2>
+                                   <h2 className="text-2xl font-serif text-[#d4af37] mb-6 flex items-center gap-4 italic">{user ? "Para ti" : "Destacados"}<div className="h-px bg-amber-900/30 flex-1"></div></h2>
                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                                        {recommendations.map(p => <ProductCard key={p.id} product={p} onClick={() => navigate(`/product/${p.id}`)} onAdd={addToCart} onBuy={() => { addToCart(p); navigate('/checkout'); }} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} isRecommended={true} />)}
                                    </div>
                                </section>
                            )}
-                           <section><h2 className="text-2xl font-serif text-amber-500 mb-6 flex items-center gap-4 italic">Catálogo <div className="h-px bg-zinc-800 flex-1"></div></h2><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">{filteredProducts.map(p => <ProductCard key={p.id} product={p} onClick={() => navigate(`/product/${p.id}`)} onAdd={addToCart} onBuy={() => { addToCart(p); navigate('/checkout'); }} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} />)}</div></section>
+                           <section><h2 className="text-2xl font-serif text-[#d4af37] mb-6 flex items-center gap-4 italic">Catálogo <div className="h-px bg-zinc-800 flex-1"></div></h2><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">{filteredProducts.map(p => <ProductCard key={p.id} product={p} onClick={() => navigate(`/product/${p.id}`)} onAdd={addToCart} onBuy={() => { addToCart(p); navigate('/checkout'); }} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} />)}</div></section>
                        </div>
                    </>
                )}
@@ -757,7 +764,7 @@ function App() {
           <Route path="/product/:id" element={<ProductDetailWrapper />} />
           <Route path="/cart" element={
               <div className="max-w-4xl mx-auto px-4 mt-10">
-                 <h2 className="text-3xl font-serif text-amber-500 mb-8">Tu Selección</h2>
+                 <h2 className="text-3xl font-serif text-[#d4af37] mb-8">Tu Selección</h2>
                  {cart.length === 0 ? <p className="text-zinc-500 text-center">Tu cesta está vacía.</p> : (
                     <div className="space-y-4">
                         {cart.map(i => (
@@ -1083,32 +1090,33 @@ function App() {
 
       <style>{`
         .premium-input { 
-          background: #09090b; 
-          border: 1px solid #27272a; 
-          color: white; 
+          background: #080808; 
+          border: 1px solid rgba(212, 175, 55, 0.1); 
+          color: #ffffff; 
           padding: 0 4rem; 
           height: 4.5rem;
           display: flex;
           align-items: center;
           border-radius: 1.25rem; 
           outline: none; 
-          transition: all 0.3s ease;
+          transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
           line-height: 1.6;
           box-sizing: border-box;
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
         } 
         .premium-input:focus { 
-          border-color: #f59e0b; 
-          background: #0c0c0e;
-          box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.1);
+          border-color: #d4af37; 
+          background: #0a0a0a;
+          box-shadow: 0 0 0 1px #d4af37, 0 10px 30px rgba(0,0,0,0.3);
         }
         select.premium-input {
-          padding: 0 2rem;
+          padding: 0 2.5rem;
           appearance: none;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2352525b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23d4af37'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
           background-repeat: no-repeat;
           background-position: right 1.5rem center;
           background-size: 1.2rem;
-          padding-right: 4rem;
+          padding-right: 4.5rem;
         }
         textarea.premium-input {
           padding: 1.5rem 4rem;
@@ -1116,11 +1124,11 @@ function App() {
           height: auto;
         }
         .premium-input::placeholder {
-          color: #52525b;
+          color: rgba(255, 255, 255, 0.1);
           font-weight: 300;
         }
-        .animate-fade-in { animation: fadeIn 0.4s ease-out; } 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1); } 
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         
         /* LIMPIEZA GOOGLE TRANSLATE */
         .goog-te-banner-frame.skiptranslate, .goog-te-gadget-icon { display: none !important; }

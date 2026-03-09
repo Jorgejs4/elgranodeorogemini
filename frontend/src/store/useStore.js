@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-// URL Base para la API (Local para desarrollo)
-const API_BASE_URL = 'http://localhost:8000';
+// URL Base para la API (Usa variable de entorno o fallback a local)
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const useStore = create(
   persist(
