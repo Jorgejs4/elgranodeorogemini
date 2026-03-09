@@ -1106,11 +1106,20 @@ function App() {
               <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-x-auto">
                 <table className="w-full text-left text-sm text-zinc-400">
                   <thead className="bg-zinc-950 font-bold border-b border-zinc-800">
-                    <tr><th className="p-4">Producto</th><th className="p-4">Precio</th><th className="p-4">Stock</th><th className="p-4">Acciones</th></tr>
+                    <tr>
+                      <th className="p-4">Imagen</th>
+                      <th className="p-4">Producto</th>
+                      <th className="p-4">Precio</th>
+                      <th className="p-4">Stock</th>
+                      <th className="p-4">Acciones</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {products.map(p => (
                       <tr key={p.id} className="border-b border-zinc-800/50">
+                        <td className="p-4">
+                           <img src={p.image_url} alt={p.name} className="w-12 h-12 object-cover rounded-lg border border-zinc-800 shadow-sm" />
+                        </td>
                         <td className="p-4 text-white font-bold">{p.name}</td>
                         <td className="p-4">{p.price}€</td>
                         <td className="p-4">
