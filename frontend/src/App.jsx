@@ -410,16 +410,26 @@ function App() {
   };
 
   const handleDeleteProduct = async (id) => {
-    if (!confirm("¿Eliminar este producto?")) return;
+    if (!confirm("¿Eliminar este producto permanentemente? Se borrarán también sus reseñas e interacciones.")) return;
     try {
         const res = await fetch(`${API_BASE_URL}/admin/products/${id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${user.token}` }
         });
         if (res.ok) {
-            fetchProducts();
+            toast.success("Producto eliminado");
+            // Actualizar el estado local inmediatamente
+            useStore.setState((state) => ({
+              products: state.products.filter(p => p.id !== id)
+            }));
+        } else {
+            const err = await res.json();
+            toast.error(`Error: ${err.detail || 'No se pudo eliminar'}`);
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error(e);
+        toast.error("Error de conexión al eliminar");
+    }
   };
 
   const handleBulkUpdateStock = async () => {

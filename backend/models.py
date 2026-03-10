@@ -31,7 +31,7 @@ class Product(Base):
     category = Column(String, index=True)
     image_url = Column(String, default="https://images.unsplash.com/photo-1559056199-641a0ac8b55e?q=80&w=400")
 
-    interactions = relationship("Interaction", back_populates="product")
+    interactions = relationship("Interaction", back_populates="product", cascade="all, delete-orphan")
 
 # --- 3. Tabla de Interacciones ---
 class Interaction(Base):
