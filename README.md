@@ -4,49 +4,55 @@
 
 ---
 
+## 🌐 Despliegue en Vivo
+🚀 **Visita la plataforma aquí:** [https://elgranodeorogemini.vercel.app/](https://elgranodeorogemini.vercel.app/)
+
+---
+
 ## 🚀 Tecnologías Principales
 
-- **Frontend:** React 19, Vite, Tailwind CSS, Zustand (Estado), React Router 7.
-- **Backend:** FastAPI (Python), SQLAlchemy ORM, SQLite (Desarrollo).
+- **Frontend:** React 19, Vite, Tailwind CSS, Zustand (Estado persistente), React Router 7.
+- **Backend:** FastAPI (Python), SQLAlchemy ORM, SQLite (Desarrollo), PBKDF2 (Seguridad).
 - **IA y ML:** 
-  - **Gemini Pro:** Chatbot barista experto para asesoramiento.
-  - **Scikit-learn:** Motor de recomendaciones basado en filtrado colaborativo.
-  - **Custom Analytics:** Algoritmos de BI para análisis de horas pico y conversión.
-- **Servicios:** Mailtrap (Simulación de correos), OpenStreetMap (Autocompletado de direcciones).
+  - **Google Gemini (Gemma 3):** Barista experto para asesoramiento en tiempo real.
+  - **Scikit-learn:** Motor de recomendaciones basado en filtrado colaborativo (Similitud de Coseno).
+  - **AI Insights:** Dashboards interactivos con análisis de BI para gestión de ventas.
+- **Servicios:** Mailtrap (Alertas de stock y pedidos), Nominatim API (Autocompletado de direcciones).
 
 ---
 
 ## ✨ Características Destacadas
 
 ### 👤 Experiencia del Cliente
-- **Recomendaciones Inteligentes:** El sistema aprende de tus compras y carritos para sugerirte productos que te encantarán.
-- **Barista Virtual:** Un chatbot integrado con Gemini Pro que te ayuda a elegir el café perfecto según tu método de preparación.
-- **Smart Checkout:** Formulario de pago ultra-rápido con autocompletado de direcciones real y gestión de tarjetas guardadas.
-- **Multilenguaje:** Traducción instantánea a 6 idiomas (ES, EN, FR, DE, IT, ZH).
+- **Barista Virtual (IA):** Un chatbot integrado con Google Gemini (Gemma 3) que te ayuda a elegir el café perfecto según tus gustos y molienda.
+- **Recomendaciones Inteligentes:** El sistema aprende de tus interacciones para sugerirte productos exclusivos.
+- **Smart Checkout:** Pago fluido con autocompletado de direcciones real y gestión de tarjetas guardadas.
+- **Internacionalización:** Soporte completo para 6 idiomas (ES, EN, FR, DE, IT, ZH).
 
 ### 🛠️ Panel de Administración (BI Dashboard)
-- **Visualización Financiera:** Gráficos de ingresos con estética *Glassmorphism* y desglose por días, semanas, meses y años.
-- **Insights de IA:** La IA analiza automáticamente los datos para indicarte la hora punta de ventas y consejos de marketing.
-- **Gestión de Inventario:** Control total del stock con alertas automáticas por correo electrónico cuando las unidades bajan de 5.
-- **Flujo de Pedidos:** Separación clara entre pedidos pendientes y completados con actualizaciones en tiempo real.
+- **Visualización de Datos:** Gráficos SVG interactivos para análisis de ventas diarias, semanales y mensuales.
+- **AI Business Insights:** Análisis automático de horas pico, tasas de conversión y consejos estratégicos generados por IA.
+- **Control de Inventario:** Gestión de stock en tiempo real con alertas automáticas por email (< 5 unidades).
+- **Gestión de Pedidos:** Sistema robusto para el seguimiento de órdenes pendientes y completadas.
 
 ---
 
-## 🛠️ Instalación y Uso
+## 🛠️ Instalación Local
 
 ### 1. Requisitos Previos
 - Python 3.10+
 - Node.js 18+
+- Docker (Opcional para despliegue rápido)
 
 ### 2. Configuración del Backend
 ```bash
 cd backend
 python -m venv venv
-source venv/Scripts/activate  # En Windows
+source venv/Scripts/activate  # En Windows: venv\Scripts\activate
 pip install -r requirements.txt
 python -m uvicorn main:app --reload
 ```
-*Nota: Crea un archivo `.env` en `backend/` con tu `GEMINI_API_KEY`.*
+*Nota: Configura tu `GEMINI_API_KEY` en un archivo `.env` dentro de `backend/`.*
 
 ### 3. Configuración del Frontend
 ```bash
@@ -55,7 +61,7 @@ npm install
 npm run dev
 ```
 
-### 4. Acceso
+### 4. Acceso Local
 - **Tienda:** [http://localhost:5173](http://localhost:5173)
 - **Admin:** `admin@admin.com` / `admin123`
 - **Documentación API:** [http://localhost:8000/docs](http://localhost:8000/docs)
@@ -63,10 +69,10 @@ npm run dev
 ---
 
 ## 📧 Sistema de Notificaciones
-El sistema está configurado para enviar correos transaccionales a través de **Mailtrap**:
-1. **Al Cliente:** Confirmación detallada tras cada compra.
-2. **Al Admin:** Alerta crítica de "Stock Bajo" cuando un producto está a punto de agotarse.
+El sistema utiliza **Mailtrap** para flujos transaccionales:
+1. **Notificación al Cliente:** Confirmación de compra instantánea.
+2. **Alerta Crítica al Admin:** Notificación de "Stock Bajo" para reposición inmediata.
 
 ---
 
-Desarrollado con ❤️ para los amantes del buen café.
+Desarrollado con ❤️ para los apasionados del café premium.
