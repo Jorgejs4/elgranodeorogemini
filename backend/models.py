@@ -32,6 +32,7 @@ class Product(Base):
     image_url = Column(String, default="https://images.unsplash.com/photo-1559056199-641a0ac8b55e?q=80&w=400")
 
     interactions = relationship("Interaction", back_populates="product", cascade="all, delete-orphan")
+    reviews = relationship("Review", back_populates="product", cascade="all, delete-orphan")
 
 # --- 3. Tabla de Interacciones ---
 class Interaction(Base):
@@ -90,6 +91,3 @@ class Review(Base):
     date = Column(DateTime, default=datetime.utcnow)
 
     product = relationship("Product", back_populates="reviews")
-
-# Actualizar Product para incluir la relación con reviews
-Product.reviews = relationship("Review", back_populates="product", cascade="all, delete-orphan")
