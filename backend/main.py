@@ -31,7 +31,7 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="API El Grano de Oro", description="Gestion de tienda, usuarios e IA Automatica")
 
-@app.get("/health", tags=["Sistema"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["Sistema"])
 def health_check():
     return {"status": "online", "timestamp": datetime.utcnow()}
 
