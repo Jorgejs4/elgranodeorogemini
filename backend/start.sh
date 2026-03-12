@@ -8,4 +8,5 @@ sleep 10
 python train.py
 
 # 2. Una vez termine, arrancamos la API
-exec uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# Usamos el puerto de la variable de entorno PORT que asigna Render de forma automática
+exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --reload

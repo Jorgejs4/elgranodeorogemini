@@ -96,7 +96,8 @@ origins = [
     "http://localhost:5173", 
     "http://127.0.0.1:5173",
     "https://elgranodeorocondockerpruebas.onrender.com",
-    "https://elgranodeorogemini.vercel.app"
+    "https://elgranodeorogemini.vercel.app",
+    "https://elgranodeorogemini.onrender.com"
 ]
 
 if frontend_url:
