@@ -31,6 +31,10 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="API El Grano de Oro", description="Gestion de tienda, usuarios e IA Automatica")
 
+@app.get("/health", tags=["Sistema"])
+def health_check():
+    return {"status": "online", "timestamp": datetime.utcnow()}
+
 # --- EVENTO DE ARRANQUE (Auto-Seed y Admin) ---
 @app.on_event("startup")
 async def startup_event():
