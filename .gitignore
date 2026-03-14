@@ -48,7 +48,6 @@ postgres_data/
 
 # Variables de entorno y secretos
 .env
-backend/security.py (¡Cuidado aquí! Si tienes claves secretas, mejor no subirlo)
 
 # Varios
 .DS_Store

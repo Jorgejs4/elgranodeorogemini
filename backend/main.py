@@ -1,11 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from typing import List, Optional, Any
 from pydantic import BaseModel
 import models, schemas, crud, security
-from database import engine, get_db
+from database import engine, get_db, SessionLocal
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -14,9 +14,14 @@ import pandas as pd
 import logging
 import random
 import os
-from datetime import datetime
+import json
+import httpx
+from datetime import datetime, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 import ml_core, gemini_assistant
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- CONFIGURACIÓN DE LOGGING (Sin Emojis para Windows) ---
 logging.basicConfig(
@@ -33,7 +38,7 @@ app = FastAPI(title="API El Grano de Oro", description="Gestion de tienda, usuar
 
 @app.api_route("/health", methods=["GET", "HEAD"], tags=["Sistema"])
 def health_check():
-    return {"status": "online", "timestamp": datetime.utcnow()}
+    return {"status": "online", "timestamp": datetime.now(timezone.utc)}
 
 # --- EVENTO DE ARRANQUE (Auto-Seed y Admin) ---
 @app.on_event("startup")
@@ -70,7 +75,7 @@ async def startup_event():
                     p = random.choice(products)
                     action = random.choices(actions, weights=[70, 20, 10])[0]
                     h = random.randint(8, 22)
-                    ts = datetime.utcnow().replace(hour=h)
+                    ts = datetime.now(timezone.utc).replace(hour=h)
                     db.add(models.Interaction(user_id=1, product_id=p.id, action_type=action, timestamp=ts))
                 db.commit()
                 ml_core.train_model(db)
@@ -122,7 +127,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 def scheduled_retrain_job():
     logger.info("[AUTO-SCHEDULER] Ejecutando reentrenamiento semanal...")
     try:
-        ml_core.train_model() 
+        db = SessionLocal()
+        ml_core.train_model(db)
+        db.close()
         logger.info("[AUTO-SCHEDULER] Modelo actualizado correctamente.")
     except Exception as e:
         logger.error(f"[AUTO-SCHEDULER] Error entrenando: {e}")
@@ -204,7 +211,7 @@ def get_user_cards(user: models.User = Depends(get_current_user), db: Session = 
 
 @app.post("/admin/products", response_model=schemas.ProductResponse, tags=["Admin"])
 def create_product(product: schemas.ProductCreate, admin: models.User = Depends(check_admin), db: Session = Depends(get_db)):
-    db_product = models.Product(**product.dict())
+    db_product = models.Product(**product.model_dump())
     db.add(db_product)
     db.commit()
     db.refresh(db_product)
@@ -221,7 +228,7 @@ def delete_product(product_id: int, admin: models.User = Depends(check_admin), d
 @app.post("/track", tags=["IA"])
 def track_interaction(interaction: InteractionSchema, db: Session = Depends(get_db)):
     # Usamos user_id=1 (o una lógica de sesión/IP) para usuarios no logueados
-    db_interaction = models.Interaction(user_id=1, product_id=interaction.product_id, action_type=interaction.action_type, timestamp=datetime.utcnow())
+    db_interaction = models.Interaction(user_id=1, product_id=interaction.product_id, action_type=interaction.action_type, timestamp=datetime.now(timezone.utc))
     db.add(db_interaction)
     db.commit()
     return {"status": "ok"}
@@ -243,7 +250,7 @@ def checkout(order: OrderSchema, background_tasks: BackgroundTasks, db: Session 
         user = db.query(models.User).filter(models.User.email == order.user).first()
         user_id = user.id if user else 1 
         
-        db.add(models.Interaction(user_id=user_id, product_id=item.id, action_type="purchase", timestamp=datetime.utcnow()))
+        db.add(models.Interaction(user_id=user_id, product_id=item.id, action_type="purchase", timestamp=datetime.now(timezone.utc)))
 
     # 3. Guardar tarjeta si se solicita (SOLO si el usuario existe)
     if order.card_info and order.save_card:
@@ -256,7 +263,7 @@ def checkout(order: OrderSchema, background_tasks: BackgroundTasks, db: Session 
 
     # 4. Crear el pedido
     items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
-    db_order = models.Order(user_email=order.user, total=order.total, items_summary=items_str, address=order.address, status="pending", date=datetime.utcnow())
+    db_order = models.Order(user_email=order.user, total=order.total, items_summary=items_str, address=order.address, status="pending", date=datetime.now(timezone.utc))
     db.add(db_order)
     
     db.commit()
@@ -268,7 +275,7 @@ def checkout(order: OrderSchema, background_tasks: BackgroundTasks, db: Session 
     except Exception as e:
         logger.error(f"Error IA: {e}")
 
-    background_tasks.add_task(send_order_confirmation_email, order.user, db_order.id, items_str, order.total)
+    background_tasks.add_task(send_order_confirmation_email, order.user, db_order.id, items_str, order.total, order.address)
     
     if low_stock_triggered:
         low_items = db.query(models.Product).filter(models.Product.stock < 5).all()
@@ -276,51 +283,69 @@ def checkout(order: OrderSchema, background_tasks: BackgroundTasks, db: Session 
         
     return {"message": "Venta exitosa", "order_id": db_order.id}
 
-# --- SISTEMA DE EMAILS (Mailtrap Sandbox) ---
-MAILTRAP_USER = "5f6569de0cb0aa"; MAILTRAP_PASS = "874209eb9cb322"
+# --- SISTEMA DE EMAILS ---
+SMTP_HOST = os.getenv("SMTP_HOST", "sandbox.smtp.mailtrap.io")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "2525"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASS = os.getenv("SMTP_PASS", "")
 
-def send_order_confirmation_email(user_email: str, order_id: int, items: str, total: float):
-    msg = MIMEMultipart()
+def send_order_confirmation_email(user_email: str, order_id: int, items: str, total: float, address: str = ""):
+    if not SMTP_USER or not SMTP_PASS:
+        logger.warning("SMTP credentials not configured. Skipping email.")
+        return
+    msg = MIMEMultipart("alternative")
     msg['From'] = 'tienda@elgranodeoro.com'
     msg['To'] = user_email
     msg['Subject'] = f"Confirmacion de Pedido #{order_id} - El Grano de Oro"
     
-    body = f"""
-    Hola,
-    
-    ¡Gracias por tu compra en El Grano de Oro!
-    
-    Detalles del pedido #{order_id}:
-    -------------------------------
-    Productos: {items}
-    Total: {total}€
-    
-    Estamos preparando tu cafe con el maximo cuidado.
-    Recibiras otro correo cuando el pedido sea enviado.
-    
-    Saludos,
-    El Equipo de El Grano de Oro.
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; background-color: #0a0a0a; color: #fff; padding: 40px;">
+      <div style="max-width: 600px; margin: 0 auto; background: #111; border-radius: 16px; border: 1px solid #d4af37; padding: 40px;">
+        <h1 style="color: #d4af37; text-align: center; font-size: 28px;">El Grano de Oro</h1>
+        <p style="text-align: center; color: #888; font-size: 12px; letter-spacing: 3px;">TOSTADORES DESDE 1920</p>
+        <hr style="border: 1px solid #333; margin: 20px 0;">
+        <h2 style="color: #fff;">Pedido #{order_id} Confirmado</h2>
+        <p style="color: #ccc;">Hola, gracias por tu compra en El Grano de Oro.</p>
+        <div style="background: #1a1a1a; padding: 20px; border-radius: 12px; margin: 20px 0;">
+          <p style="color: #d4af37; font-weight: bold; font-size: 12px; letter-spacing: 2px;">PRODUCTOS</p>
+          <p style="color: #eee;">{items}</p>
+          <hr style="border: 1px solid #333;">
+          <p style="color: #d4af37; font-weight: bold; font-size: 12px; letter-spacing: 2px;">DIRECCION DE ENVIO</p>
+          <p style="color: #eee;">{address or 'No especificada'}</p>
+          <hr style="border: 1px solid #333;">
+          <p style="color: #d4af37; font-weight: bold; font-size: 12px; letter-spacing: 2px;">TOTAL</p>
+          <p style="color: #fff; font-size: 24px; font-weight: bold;">{total:.2f} EUR</p>
+        </div>
+        <p style="color: #888;">Estamos preparando tu cafe con el maximo cuidado. Recibiras otro correo cuando el pedido sea enviado.</p>
+        <p style="color: #888; margin-top: 30px; text-align: center; font-size: 11px;">El Equipo de El Grano de Oro</p>
+      </div>
+    </body>
+    </html>
     """
-    msg.attach(MIMEText(body, 'plain'))
+    msg.attach(MIMEText(html_body, 'html'))
     try:
-        with smtplib.SMTP("sandbox.smtp.mailtrap.io", 2525) as server:
-            server.login(MAILTRAP_USER, MAILTRAP_PASS)
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.login(SMTP_USER, SMTP_PASS)
             server.send_message(msg)
+        logger.info(f"Email de confirmacion enviado a {user_email}")
     except Exception as e: logger.error(f"Error email cliente: {e}")
 
 def send_stock_alert_email(low_stock_products):
+    if not SMTP_USER or not SMTP_PASS:
+        return
     msg = MIMEMultipart()
     msg['From'] = 'sistema@elgranodeoro.com'
-    msg['To'] = 'admin@elgranodeoro.com'
+    msg['To'] = os.getenv("ADMIN_EMAIL", "admin@elgranodeoro.com")
     msg['Subject'] = "ALERTA CRITICA: Stock Bajo"
     
     items_list = "\n".join([f"- {p.name} (ID: {p.id}): SOLO QUEDAN {p.stock} UDS" for p in low_stock_products])
-    body = f"Los siguientes productos estan por debajo del minimo (5 uds):\n\n{items_list}\n\nPor favor, repón el inventario lo antes posible."
+    body = f"Los siguientes productos estan por debajo del minimo (5 uds):\n\n{items_list}\n\nPor favor, repon el inventario lo antes posible."
     
     msg.attach(MIMEText(body, 'plain'))
     try:
-        with smtplib.SMTP("sandbox.smtp.mailtrap.io", 2525) as server:
-            server.login(MAILTRAP_USER, MAILTRAP_PASS)
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.login(SMTP_USER, SMTP_PASS)
             server.send_message(msg)
     except Exception as e: logger.error(f"Error email admin: {e}")
 
@@ -446,8 +471,276 @@ def get_product_reviews(product_id: int, db: Session = Depends(get_db)):
 
 @app.post("/reviews", response_model=schemas.ReviewResponse, tags=["Social"])
 def post_review(review: schemas.ReviewCreate, db: Session = Depends(get_db)):
-    db_review = models.Review(**review.dict())
+    db_review = models.Review(**review.model_dump())
     db.add(db_review)
     db.commit()
     db.refresh(db_review)
     return db_review
+
+# =============================================
+# --- PAGOS CON STRIPE ---
+# =============================================
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+class StripeCheckoutRequest(BaseModel):
+    items: List[OrderItemSchema]
+    user_email: str
+    address: str
+
+@app.post("/create-checkout-session", tags=["Pagos"])
+def create_stripe_checkout(data: StripeCheckoutRequest, db: Session = Depends(get_db)):
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Stripe no esta configurado. Añade STRIPE_SECRET_KEY en .env")
+    try:
+        import stripe
+        stripe.api_key = STRIPE_SECRET_KEY
+        
+        line_items = []
+        for item in data.items:
+            line_items.append({
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": item.name},
+                    "unit_amount": int(item.price * 100),
+                },
+                "quantity": item.qty,
+            })
+        
+        # Guardar datos del pedido en metadata para el webhook
+        items_str = ", ".join([f"{i.qty}x {i.name}" for i in data.items])
+        total = sum(i.price * i.qty for i in data.items)
+        
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=line_items,
+            mode="payment",
+            success_url=f"{FRONTEND_URL}/?payment=success",
+            cancel_url=f"{FRONTEND_URL}/?payment=cancel",
+            customer_email=data.user_email,
+            metadata={
+                "user_email": data.user_email,
+                "address": data.address,
+                "items_summary": items_str,
+                "total": str(total),
+            }
+        )
+        return {"checkout_url": session.url, "session_id": session.id}
+    except Exception as e:
+        logger.error(f"Stripe error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/stripe-webhook", tags=["Pagos"])
+async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Stripe no configurado")
+    import stripe
+    stripe.api_key = STRIPE_SECRET_KEY
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+    
+    try:
+        if STRIPE_WEBHOOK_SECRET:
+            event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+        else:
+            event = json.loads(payload)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    if event.get("type") == "checkout.session.completed":
+        session = event["data"]["object"]
+        metadata = session.get("metadata", {})
+        
+        # Crear pedido
+        db_order = models.Order(
+            user_email=metadata.get("user_email", "stripe_customer"),
+            total=float(metadata.get("total", 0)),
+            items_summary=metadata.get("items_summary", ""),
+            address=metadata.get("address", ""),
+            status="pending",
+            payment_method="stripe",
+            payment_id=session.get("payment_intent", session.get("id")),
+            date=datetime.now(timezone.utc)
+        )
+        db.add(db_order)
+        db.commit()
+        db.refresh(db_order)
+        
+        background_tasks.add_task(
+            send_order_confirmation_email,
+            metadata.get("user_email", ""),
+            db_order.id,
+            metadata.get("items_summary", ""),
+            float(metadata.get("total", 0)),
+            metadata.get("address", "")
+        )
+        logger.info(f"Stripe payment completed: Order #{db_order.id}")
+    
+    return {"status": "ok"}
+
+# =============================================
+# --- PAGOS CON PAYPAL ---
+# =============================================
+PAYPAL_CLIENT_ID = os.getenv("PAYPAL_CLIENT_ID", "")
+PAYPAL_CLIENT_SECRET = os.getenv("PAYPAL_CLIENT_SECRET", "")
+PAYPAL_BASE_URL = os.getenv("PAYPAL_BASE_URL", "https://api-m.sandbox.paypal.com")
+
+class PayPalOrderRequest(BaseModel):
+    items: List[OrderItemSchema]
+    user_email: str
+    address: str
+    total: float
+
+async def get_paypal_access_token():
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+        return None
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{PAYPAL_BASE_URL}/v1/oauth2/token",
+            data={"grant_type": "client_credentials"},
+            auth=(PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET),
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+        return response.json().get("access_token")
+
+@app.post("/create-paypal-order", tags=["Pagos"])
+async def create_paypal_order(data: PayPalOrderRequest):
+    if not PAYPAL_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="PayPal no esta configurado. Añade PAYPAL_CLIENT_ID en .env")
+    token = await get_paypal_access_token()
+    if not token:
+        raise HTTPException(status_code=500, detail="No se pudo autenticar con PayPal")
+    
+    order_data = {
+        "intent": "CAPTURE",
+        "purchase_units": [{
+            "amount": {
+                "currency_code": "EUR",
+                "value": f"{data.total:.2f}"
+            },
+            "description": f"Pedido El Grano de Oro - {len(data.items)} productos"
+        }]
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{PAYPAL_BASE_URL}/v2/checkout/orders",
+            json=order_data,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        )
+        result = response.json()
+    
+    if response.status_code not in (200, 201):
+        raise HTTPException(status_code=500, detail="Error creando orden PayPal")
+    
+    return {"order_id": result["id"], "status": result["status"]}
+
+@app.post("/capture-paypal-order", tags=["Pagos"])
+async def capture_paypal_order(
+    paypal_order_id: str,
+    data: PayPalOrderRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    token = await get_paypal_access_token()
+    if not token:
+        raise HTTPException(status_code=500, detail="Error autenticando con PayPal")
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{PAYPAL_BASE_URL}/v2/checkout/orders/{paypal_order_id}/capture",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        )
+        result = response.json()
+    
+    if result.get("status") != "COMPLETED":
+        raise HTTPException(status_code=400, detail="El pago PayPal no se completo")
+    
+    # Restar stock
+    for item in data.items:
+        db_product = db.query(models.Product).filter(models.Product.id == item.id).first()
+        if db_product:
+            db_product.stock = max(0, db_product.stock - item.qty)
+    
+    items_str = ", ".join([f"{i.qty}x {i.name}" for i in data.items])
+    db_order = models.Order(
+        user_email=data.user_email,
+        total=data.total,
+        items_summary=items_str,
+        address=data.address,
+        status="pending",
+        payment_method="paypal",
+        payment_id=paypal_order_id,
+        date=datetime.now(timezone.utc)
+    )
+    db.add(db_order)
+    db.commit()
+    db.refresh(db_order)
+    
+    background_tasks.add_task(send_order_confirmation_email, data.user_email, db_order.id, items_str, data.total, data.address)
+    
+    return {"message": "Pago PayPal completado", "order_id": db_order.id}
+
+# =============================================
+# --- AUTENTICACIÓN CON GOOGLE ---
+# =============================================
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+
+class GoogleAuthRequest(BaseModel):
+    credential: str  # Token JWT de Google Identity Services
+
+@app.post("/auth/google", tags=["Auth"])
+async def google_login(data: GoogleAuthRequest, db: Session = Depends(get_db)):
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Google Auth no esta configurado. Añade GOOGLE_CLIENT_ID en .env")
+    
+    try:
+        # Validar el token con Google
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://oauth2.googleapis.com/tokeninfo?id_token={data.credential}"
+            )
+            if response.status_code != 200:
+                raise HTTPException(status_code=401, detail="Token de Google invalido")
+            
+            google_data = response.json()
+        
+        email = google_data.get("email")
+        if not email:
+            raise HTTPException(status_code=401, detail="No se pudo obtener el email de Google")
+        
+        # Verificar que el token es para nuestra app
+        if google_data.get("aud") != GOOGLE_CLIENT_ID:
+            raise HTTPException(status_code=401, detail="Token no valido para esta aplicacion")
+        
+        # Buscar o crear usuario
+        user = db.query(models.User).filter(models.User.email == email).first()
+        if not user:
+            # Crear nuevo usuario con Google
+            hashed_pwd = security.get_password_hash(os.urandom(32).hex())
+            user = models.User(
+                email=email,
+                hashed_password=hashed_pwd,
+                role="user",
+                auth_provider="google"
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            logger.info(f"Nuevo usuario Google creado: {email}")
+        
+        # Generar JWT
+        access_token = security.create_access_token(data={"sub": str(user.id)})
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "role": user.role,
+            "user_id": user.id,
+            "email": user.email
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Google auth error: {e}")
+        raise HTTPException(status_code=500, detail="Error en autenticacion con Google")

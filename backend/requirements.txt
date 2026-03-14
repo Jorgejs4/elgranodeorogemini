@@ -9,13 +9,14 @@ scikit-learn
 python-jose[cryptography]
 python-multipart
 requests
-emails
 apscheduler
 numpy
+httpx
+# Payments
+stripe
 # Testing
 pytest
 pytest-asyncio
-httpx
 pytest-cov
 # Migrations
 alembic

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -18,8 +18,7 @@ class ProductCreate(ProductBase):
 
 class ProductResponse(ProductBase):
     id: int
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ==========================
 # ESQUEMAS DE USUARIOS
@@ -33,8 +32,7 @@ class UserCreate(UserBase):
 class User(UserBase):
     id: int
     is_active: bool = True
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Alias para compatibilidad con main.py
 UserResponse = User
@@ -55,8 +53,7 @@ class CreditCardCreate(CreditCardBase):
 class CreditCardResponse(CreditCardBase):
     id: int
     user_id: int
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ==========================
 # ESQUEMAS DE INTERACCIONES
@@ -72,8 +69,7 @@ class InteractionCreate(InteractionBase):
 class Interaction(InteractionBase):
     id: int
     timestamp: datetime
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # --- ESQUEMAS DE RESEÑAS ---
 class ReviewCreate(BaseModel):
@@ -85,8 +81,7 @@ class ReviewCreate(BaseModel):
 class ReviewResponse(ReviewCreate):
     id: int
     date: datetime
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 InteractionResponse = Interaction

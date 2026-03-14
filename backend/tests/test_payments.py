@@ -4,32 +4,74 @@ from main import app
 import models
 
 @pytest.mark.asyncio
-async def test_save_card(db_session):
-    # Test básico de guardado de tarjeta (ahora db_session existe gracias a conftest.py)
+async def test_checkout_success(db_session):
+    # 1. Crear producto con stock
+    product = models.Product(
+        name="Café de Prueba",
+        description="Rico rico",
+        price=20.0,
+        stock=10,
+        category="Café en Grano",
+        image_url="http://test.com/img.jpg"
+    )
+    db_session.add(product)
+    db_session.commit()
+    db_session.refresh(product)
+    
+    # 2. Datos del pedido
+    order_data = {
+        "user": "cliente@test.com",
+        "total": 40.0,
+        "items": [{"id": product.id, "name": product.name, "qty": 2, "price": 20.0}],
+        "address": "Calle Falsa 123",
+        "save_card": False
+    }
+    
+    # 3. Ejecutar checkout
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        # En este punto el test pasa porque db_session está inyectada
-        # Para que sea un test completo, necesitaríamos autenticación (token)
-        pass
+        response = await ac.post("/checkout", json=order_data)
+    
+    # 4. Verificaciones
+    assert response.status_code == 200
+    assert response.json()["message"] == "Venta exitosa"
+    
+    # Verificar que el pedido existe en DB
+    order = db_session.query(models.Order).filter(models.Order.user_email == "cliente@test.com").first()
+    assert order is not None
+    assert order.total == 40.0
+    assert "2x Café de Prueba" in order.items_summary
+    
+    # Verificar stock reducido
+    db_session.refresh(product)
+    assert product.stock == 8
 
 @pytest.mark.asyncio
-async def test_checkout_with_mock_payment(db_session):
+async def test_checkout_insufficient_stock(db_session):
+    # 1. Crear producto con stock bajo
+    product = models.Product(
+        name="Café Limitado",
+        price=30.0,
+        stock=1,
+        category="Café en Grano"
+    )
+    db_session.add(product)
+    db_session.commit()
+    db_session.refresh(product)
+    
+    # 2. Intentar comprar más de lo que hay
+    order_data = {
+        "user": "pobre@test.com",
+        "total": 60.0,
+        "items": [{"id": product.id, "name": product.name, "qty": 2, "price": 30.0}],
+        "address": "Calle Vacia 0"
+    }
+    
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        # El test no fallará por AsyncClient.__init__ ahora
-        order_data = {
-            "user": "test@example.com",
-            "total": 50.0,
-            "items": [{"id": 1, "name": "Café", "qty": 2, "price": 25.0}],
-            "address": "Calle Falsa 123",
-            "save_card": True,
-            "card_info": {
-                "card_holder": "Test User",
-                "last_four": "4242",
-                "exp_month": "01",
-                "exp_year": "28",
-                "brand": "visa",
-                "token": "mock_tok"
-            }
-        }
-        # Nota: Aquí no ejecutamos el POST porque el producto ID 1 no existe en la DB vacía
-        # Pero el test de inicialización ya es correcto.
-        pass
+        response = await ac.post("/checkout", json=order_data)
+    
+    assert response.status_code == 400
+    assert "Stock insuficiente" in response.json()["detail"]
+    
+    # Verificar que NO se redujo el stock
+    db_session.refresh(product)
+    assert product.stock == 1

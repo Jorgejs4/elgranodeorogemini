@@ -920,6 +920,75 @@ function App() {
                        {/* PAGO */}
                        <div className="bg-zinc-900 p-8 rounded-3xl border border-zinc-800 shadow-xl">
                            <h3 className="text-xl font-bold text-white mb-6">💳 Método de Pago</h3>
+                           
+                           {/* BOTONES STRIPE Y PAYPAL */}
+                           <div className="grid grid-cols-2 gap-4 mb-6">
+                               <button
+                                 onClick={async () => {
+                                   if(cart.length === 0) return;
+                                   const fullAddress = `${shipping.street} ${shipping.number}, ${shipping.city}, ${shipping.state}, ${shipping.zip}`;
+                                   const tId = toast.loading("Redirigiendo a Stripe...");
+                                   try {
+                                     const res = await fetch(`${API_BASE_URL}/create-checkout-session`, {
+                                       method: 'POST',
+                                       headers: { 'Content-Type': 'application/json' },
+                                       body: JSON.stringify({
+                                         items: cart.map(item => ({ id: item.id, name: item.name, qty: item.qty, price: item.price })),
+                                         user_email: user?.email || 'guest@elgranodeoro.com',
+                                         address: fullAddress
+                                       })
+                                     });
+                                     const data = await res.json();
+                                     if (data.checkout_url) {
+                                       window.location.href = data.checkout_url;
+                                     } else {
+                                       toast.error(data.detail || "Error con Stripe", { id: tId });
+                                     }
+                                   } catch(e) { toast.error("Error conectando con Stripe", { id: tId }); }
+                                 }}
+                                 className="flex items-center justify-center gap-2 bg-[#635BFF] text-white font-bold py-4 rounded-xl hover:opacity-90 transition-all shadow-lg"
+                               >
+                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-7.076-2.19l-.909 5.604C4.626 22.857 7.5 24 11.173 24c2.6 0 4.717-.64 6.261-1.906 1.636-1.345 2.47-3.307 2.47-5.831 0-4.108-2.589-5.786-5.928-7.113z"/></svg>
+                                 Pagar con Stripe
+                               </button>
+                               <button
+                                 onClick={async () => {
+                                   if(cart.length === 0) return;
+                                   const fullAddress = `${shipping.street} ${shipping.number}, ${shipping.city}, ${shipping.state}, ${shipping.zip}`;
+                                   const total = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
+                                   const tId = toast.loading("Conectando con PayPal...");
+                                   try {
+                                     const res = await fetch(`${API_BASE_URL}/create-paypal-order`, {
+                                       method: 'POST',
+                                       headers: { 'Content-Type': 'application/json' },
+                                       body: JSON.stringify({
+                                         items: cart.map(item => ({ id: item.id, name: item.name, qty: item.qty, price: item.price })),
+                                         user_email: user?.email || 'guest@elgranodeoro.com',
+                                         address: fullAddress,
+                                         total: total
+                                       })
+                                     });
+                                     const data = await res.json();
+                                     if (data.order_id) {
+                                       // Redirigir a PayPal para aprobar
+                                       window.location.href = `https://www.sandbox.paypal.com/checkoutnow?token=${data.order_id}`;
+                                     } else {
+                                       toast.error(data.detail || "Error con PayPal", { id: tId });
+                                     }
+                                   } catch(e) { toast.error("Error conectando con PayPal", { id: tId }); }
+                                 }}
+                                 className="flex items-center justify-center gap-2 bg-[#FFC439] text-black font-bold py-4 rounded-xl hover:opacity-90 transition-all shadow-lg"
+                               >
+                                 <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#003087" d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106z"/></svg>
+                                 Pagar con PayPal
+                               </button>
+                           </div>
+                           
+                           <div className="flex items-center gap-4 mb-6">
+                               <div className="h-px bg-zinc-800 flex-1"></div>
+                               <span className="text-zinc-600 text-[10px] uppercase font-bold tracking-widest">O paga con tarjeta</span>
+                               <div className="h-px bg-zinc-800 flex-1"></div>
+                           </div>
                            {savedCards.length > 0 && (
                                <div className="mb-6 space-y-3">
                                    <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest mb-2">Tarjetas Guardadas</p>
@@ -1219,23 +1288,67 @@ function AuthModal({ onClose, onLogin }) {
             } else {
                 const form = new URLSearchParams(); form.append('username', email); form.append('password', password);
                 const res = await fetch(`${API_BASE_URL}/token`, { method: 'POST', body: form });
-                if(!res.ok) throw new Error("Email o contraseña incorrectos");
+                if(!res.ok) throw new Error("Email o contrase\u00f1a incorrectos");
                 const data = await res.json();
                 onLogin({ email, id: data.user_id, role: data.role, token: data.access_token });
                 toast.success(`Bienvenido de nuevo`);
             }
         } catch(err) { toast.error(err.message); }
     };
+
+    // Google Sign-In
+    const googleContainerRef = useRef(null);
+    useEffect(() => {
+        const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+        if (!GOOGLE_CLIENT_ID || !window.google?.accounts) return;
+        window.google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: async (response) => {
+                try {
+                    const res = await fetch(`${API_BASE_URL}/auth/google`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ credential: response.credential })
+                    });
+                    if (!res.ok) throw new Error("Error con Google");
+                    const data = await res.json();
+                    onLogin({ email: data.email, id: data.user_id, role: data.role, token: data.access_token });
+                    toast.success("Bienvenido con Google");
+                } catch(err) { toast.error(err.message); }
+            }
+        });
+        if (googleContainerRef.current) {
+            window.google.accounts.id.renderButton(googleContainerRef.current, {
+                theme: 'filled_black',
+                size: 'large',
+                width: '100%',
+                text: 'continue_with',
+                shape: 'pill'
+            });
+        }
+    }, [onLogin]);
+
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-md bg-black/60">
             <div className="bg-zinc-900 p-10 rounded-3xl border border-zinc-700 w-full max-w-md relative shadow-2xl">
                 <h2 className="text-3xl font-serif text-amber-500 mb-6 text-center font-bold italic">{isReg?"Registro":"Acceso"}</h2>
+                
+                {/* Google Sign-In Button */}
+                <div ref={googleContainerRef} className="flex justify-center mb-4"></div>
+                {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className="h-px bg-zinc-800 flex-1"></div>
+                        <span className="text-zinc-600 text-[10px] uppercase font-bold tracking-widest">o</span>
+                        <div className="h-px bg-zinc-800 flex-1"></div>
+                    </div>
+                )}
+                
                 <form onSubmit={submit} className="space-y-4">
                     <input className="premium-input w-full" type="email" placeholder="Email" onChange={e=>setEmail(e.target.value)} required />
-                    <input className="premium-input w-full" type="password" placeholder="Contraseña" onChange={e=>setPassword(e.target.value)} required />
+                    <input className="premium-input w-full" type="password" placeholder="Contrase\u00f1a" onChange={e=>setPassword(e.target.value)} required />
                     <button className="w-full bg-amber-600 text-black font-bold py-4 rounded-xl mt-4 hover:bg-amber-500 transition shadow-lg">{isReg?"Registrar":"Entrar"}</button>
                 </form>
-                <div className="mt-6 text-center text-zinc-500 text-sm cursor-pointer hover:text-white transition" onClick={()=>setIsReg(!isReg)}>{isReg?"¿Ya tienes cuenta? Entra":"¿No tienes cuenta? Regístrate"}</div>
+                <div className="mt-6 text-center text-zinc-500 text-sm cursor-pointer hover:text-white transition" onClick={()=>setIsReg(!isReg)}>{isReg?"\u00bfYa tienes cuenta? Entra":"\u00bfNo tienes cuenta? Reg\u00edstrate"}</div>
                 <button onClick={onClose} className="absolute top-4 right-4 text-zinc-500 hover:text-white">✕</button>
             </div>
         </div>

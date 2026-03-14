@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boo
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
-from datetime import datetime
+from datetime import datetime, timezone
 
 # --- 1. Tabla de Usuarios ---
 class User(Base):
@@ -14,6 +14,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="user")  
     is_active = Column(Boolean, default=True)
+    auth_provider = Column(String, default="local")  # "local", "google"
     
     interactions = relationship("Interaction", back_populates="user")
     cards = relationship("CreditCard", back_populates="user", cascade="all, delete-orphan")
@@ -61,6 +62,8 @@ class Order(Base):
     items_summary = Column(String)
     address = Column(String)
     status = Column(String, default="pending")
+    payment_method = Column(String, default="card")  # "card", "stripe", "paypal"
+    payment_id = Column(String, nullable=True)  # Stripe/PayPal transaction ID
 
 # --- 5. Tabla de Tarjetas ---
 class CreditCard(Base):
@@ -88,6 +91,6 @@ class Review(Base):
     user_name = Column(String, default="Cliente Anónimo")
     rating = Column(Integer, default=5) # 1 a 5 estrellas
     comment = Column(String)
-    date = Column(DateTime, default=datetime.utcnow)
+    date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     product = relationship("Product", back_populates="reviews")

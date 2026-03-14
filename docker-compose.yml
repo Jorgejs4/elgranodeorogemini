@@ -16,28 +16,31 @@ services:
   # 2. BACKEND (API + IA)
   backend:
     build: ./backend
-    #command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
+      - backend_data:/app/data  # Volumen persistente para SQLite
     ports:
       - "8000:8000"
     depends_on:
       - db
     environment:
       - DATABASE_URL=postgresql://user:password@db/elgranodeoro
+    env_file:
+      - ./backend/.env
 
-  # 3. FRONTEND (React) - ¡NUEVO!
+  # 3. FRONTEND (React)
   frontend:
     build: ./frontend
     volumes:
       - ./frontend:/app
-      - /app/node_modules # Truco para no borrar las librerías instaladas
+      - /app/node_modules
     ports:
       - "5173:5173"
     environment:
-      - CHOKIDAR_USEPOLLING=true # Necesario en Windows para que los cambios se vean al instante
+      - CHOKIDAR_USEPOLLING=true
     depends_on:
       - backend
 
 volumes:
   postgres_data:
+  backend_data:
