@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 import ml_core, gemini_assistant
 from dotenv import load_dotenv
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 load_dotenv()
 
@@ -161,6 +163,9 @@ class BulkStockItem(BaseModel):
 class BulkStockRequest(BaseModel):
     updates: List[BulkStockItem]
 
+class GoogleAuthRequest(BaseModel):
+    credential: str
+
 # --- SEGURIDAD ---
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
@@ -195,6 +200,42 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         raise HTTPException(status_code=400, detail="Credenciales incorrectas")
     access_token = security.create_access_token(data={"sub": str(user.id)})
     return {"access_token": access_token, "token_type": "bearer", "role": user.role, "user_id": user.id, "email": user.email}
+
+@app.post("/auth/google", tags=["Auth"])
+def google_auth(request: GoogleAuthRequest, db: Session = Depends(get_db)):
+    try:
+        # 1. Validar el token con Google
+        CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+        # Si no hay client ID configurado para validacion estricta, Google Auth Library aun puede decodificarlo
+        # si le pasamos el aud=CLIENT_ID, en dev lo podemos dejar ligeramente menos rigido, pero es mejor estricto.
+        idinfo = id_token.verify_oauth2_token(request.credential, google_requests.Request(), CLIENT_ID)
+        
+        email = idinfo.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="Token no contiene email")
+            
+        # 2. Buscar o crear el usuario en BD
+        user = db.query(models.User).filter(models.User.email == email).first()
+        if not user:
+            # Creamos cuenta de usuario automatica para Google
+            random_pw = security.get_password_hash(f"ggl_{os.urandom(16).hex()}")
+            user = models.User(email=email, hashed_password=random_pw, role="user")
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        # 3. Emitir JWT de nuestra propia app
+        access_token = security.create_access_token(data={"sub": str(user.id)})
+        return {
+            "access_token": access_token, 
+            "token_type": "bearer", 
+            "role": user.role, 
+            "user_id": user.id, 
+            "email": user.email
+        }
+    except ValueError as e:
+        logger.error(f"Fallo al validar token de Google: {str(e)}")
+        raise HTTPException(status_code=401, detail="Token de Google invalido")
 
 @app.get("/products/", response_model=List[schemas.ProductResponse], tags=["Productos"])
 def read_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

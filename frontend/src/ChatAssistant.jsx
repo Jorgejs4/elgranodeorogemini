@@ -34,7 +34,7 @@ const ChatAssistant = () => {
       });
       const data = await response.json();
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
-    } catch (error) {
+    } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: '☕ Perdona, he tenido un problema con la molienda. Inténtalo de nuevo más tarde.' }]);
     } finally {
       setIsLoading(false);

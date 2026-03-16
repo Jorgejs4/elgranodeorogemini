@@ -74,3 +74,23 @@ async def test_admin_check_low_stock_and_emails(db_session):
         # en ASGI Test Client normalmente esto corre sincrónicamente.
         # Comprobamos si el Mailtrap / SMTP fue invocado.
         mock_smtp.assert_called()
+
+@pytest.mark.asyncio
+async def test_google_auth(db_session):
+    # Simulamos el decodificador de JWT de Google
+    with patch("main.id_token.verify_oauth2_token") as mock_verify:
+        mock_verify.return_value = {"email": "googleuser@test.com", "sub": "1234567890"}
+        
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.post("/auth/google", json={"credential": "fake_google_jwt_token"})
+            
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert data["email"] == "googleuser@test.com"
+        assert data["role"] == "user"
+        
+        # Verificamos si creó el usuario en la BD de pruebas
+        user = db_session.query(models.User).filter(models.User.email == "googleuser@test.com").first()
+        assert user is not None
+        assert user.role == "user"

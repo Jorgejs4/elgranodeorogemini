@@ -1,4 +1,3 @@
-import toast from 'react-hot-toast';
 import PropTypes from 'prop-types';
 
 const ProductCard = ({ product, isRecommended, onAdd, onClick, isLiked, onLike }) => {
@@ -83,7 +82,6 @@ ProductCard.propTypes = {
     }).isRequired,
     isRecommended: PropTypes.bool,
     onAdd: PropTypes.func,
-    onBuy: PropTypes.func,
     onClick: PropTypes.func,
     isLiked: PropTypes.bool,
     onLike: PropTypes.func
