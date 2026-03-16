@@ -163,9 +163,6 @@ class BulkStockItem(BaseModel):
 class BulkStockRequest(BaseModel):
     updates: List[BulkStockItem]
 
-class GoogleAuthRequest(BaseModel):
-    credential: str
-
 # --- SEGURIDAD ---
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
@@ -201,41 +198,6 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     access_token = security.create_access_token(data={"sub": str(user.id)})
     return {"access_token": access_token, "token_type": "bearer", "role": user.role, "user_id": user.id, "email": user.email}
 
-@app.post("/auth/google", tags=["Auth"])
-def google_auth(request: GoogleAuthRequest, db: Session = Depends(get_db)):
-    try:
-        # 1. Validar el token con Google
-        CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-        # Si no hay client ID configurado para validacion estricta, Google Auth Library aun puede decodificarlo
-        # si le pasamos el aud=CLIENT_ID, en dev lo podemos dejar ligeramente menos rigido, pero es mejor estricto.
-        idinfo = id_token.verify_oauth2_token(request.credential, google_requests.Request(), CLIENT_ID)
-        
-        email = idinfo.get("email")
-        if not email:
-            raise HTTPException(status_code=400, detail="Token no contiene email")
-            
-        # 2. Buscar o crear el usuario en BD
-        user = db.query(models.User).filter(models.User.email == email).first()
-        if not user:
-            # Creamos cuenta de usuario automatica para Google
-            random_pw = security.get_password_hash(f"ggl_{os.urandom(16).hex()}")
-            user = models.User(email=email, hashed_password=random_pw, role="user")
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-
-        # 3. Emitir JWT de nuestra propia app
-        access_token = security.create_access_token(data={"sub": str(user.id)})
-        return {
-            "access_token": access_token, 
-            "token_type": "bearer", 
-            "role": user.role, 
-            "user_id": user.id, 
-            "email": user.email
-        }
-    except ValueError as e:
-        logger.error(f"Fallo al validar token de Google: {str(e)}")
-        raise HTTPException(status_code=401, detail="Token de Google invalido")
 
 @app.get("/products/", response_model=List[schemas.ProductResponse], tags=["Productos"])
 def read_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
@@ -276,53 +238,77 @@ def track_interaction(interaction: InteractionSchema, db: Session = Depends(get_
 
 @app.post("/checkout", tags=["Ventas"])
 def checkout(order: OrderSchema, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    # 0. Validar campos obligatorios
+    addr = (order.address or "").strip()
+    if not addr or addr.replace(",", "").replace(" ", "") == "":
+        raise HTTPException(status_code=400, detail="La dirección de envío es obligatoria")
+    if not order.card_info:
+        raise HTTPException(status_code=400, detail="Debes seleccionar un método de pago")
+
     # 1. Verificar stock y restar
     low_stock_triggered = False
+    # Obtener usuario UNA sola vez
+    db_user = db.query(models.User).filter(models.User.email == order.user).first()
+    user_id = db_user.id if db_user else 1
+
     for item in order.items:
         db_product = db.query(models.Product).filter(models.Product.id == item.id).first()
-        if not db_product or db_product.stock < item.qty: 
+        if not db_product or db_product.stock < item.qty:
             raise HTTPException(status_code=400, detail=f"Stock insuficiente: {item.name}")
         db_product.stock -= item.qty
-        
         if db_product.stock < 5:
             low_stock_triggered = True
-        
-        # 2. ALIMENTAR IA: Registrar interaccion de COMPRA
-        user = db.query(models.User).filter(models.User.email == order.user).first()
-        user_id = user.id if user else 1 
-        
+        # Alimentar IA
         db.add(models.Interaction(user_id=user_id, product_id=item.id, action_type="purchase", timestamp=datetime.now(timezone.utc)))
 
-    # 3. Guardar tarjeta si se solicita (SOLO si el usuario existe)
-    if order.card_info and order.save_card:
-        user = db.query(models.User).filter(models.User.email == order.user).first()
-        if user:
-            exists = db.query(models.CreditCard).filter(models.CreditCard.user_id == user.id, models.CreditCard.last_four == order.card_info.last_four).first()
-            if not exists:
-                db_card = models.CreditCard(user_id=user.id, card_holder=order.card_info.card_holder, last_four=order.card_info.last_four, exp_month=order.card_info.exp_month, exp_year=order.card_info.exp_year, brand=order.card_info.brand, token=order.card_info.token)
-                db.add(db_card)
+    # 2. Guardar tarjeta si se solicita
+    if order.card_info and order.save_card and db_user:
+        exists = db.query(models.CreditCard).filter(
+            models.CreditCard.user_id == db_user.id,
+            models.CreditCard.last_four == order.card_info.last_four
+        ).first()
+        if not exists:
+            db.add(models.CreditCard(
+                user_id=db_user.id,
+                card_holder=order.card_info.card_holder,
+                last_four=order.card_info.last_four,
+                exp_month=order.card_info.exp_month,
+                exp_year=order.card_info.exp_year,
+                brand=order.card_info.brand,
+                token=order.card_info.token
+            ))
 
-    # 4. Crear el pedido
+    # 3. Crear el pedido
     items_str = ", ".join([f"{i.qty}x {i.name}" for i in order.items])
-    db_order = models.Order(user_email=order.user, total=order.total, items_summary=items_str, address=order.address, status="pending", date=datetime.now(timezone.utc))
+    db_order = models.Order(
+        user_email=order.user,
+        total=order.total,
+        items_summary=items_str,
+        address=order.address,
+        status="pending",
+        date=datetime.now(timezone.utc)
+    )
     db.add(db_order)
-    
     db.commit()
     db.refresh(db_order)
-    
-    # 5. Tareas de segundo plano: IA y Emails
-    try:
-        ml_core.train_model(db)
-    except Exception as e:
-        logger.error(f"Error IA: {e}")
 
+    # 4. Tareas de fondo: email, stock alert y reentrenamiento IA (no bloquea la respuesta)
     background_tasks.add_task(send_order_confirmation_email, order.user, db_order.id, items_str, order.total, order.address)
-    
     if low_stock_triggered:
         low_items = db.query(models.Product).filter(models.Product.stock < 5).all()
         background_tasks.add_task(send_stock_alert_email, low_items)
-        
+    background_tasks.add_task(_retrain_model_bg)
+
     return {"message": "Venta exitosa", "order_id": db_order.id}
+
+def _retrain_model_bg():
+    """Reentrenar modelo IA en segundo plano sin bloquear la respuesta al cliente."""
+    try:
+        db = SessionLocal()
+        ml_core.train_model(db)
+        db.close()
+    except Exception as e:
+        logger.error(f"Error IA background: {e}")
 
 # --- SISTEMA DE EMAILS ---
 SMTP_HOST = os.getenv("SMTP_HOST", "sandbox.smtp.mailtrap.io")
@@ -752,7 +738,7 @@ async def capture_paypal_order(
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
 class GoogleAuthRequest(BaseModel):
-    credential: str  # Token JWT de Google Identity Services
+    credential: str
 
 @app.post("/auth/google", tags=["Auth"])
 async def google_login(data: GoogleAuthRequest, db: Session = Depends(get_db)):

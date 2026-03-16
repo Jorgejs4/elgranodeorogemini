@@ -597,10 +597,30 @@ function App() {
     setAddressSuggestions([]);
   };
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const processPayment = async (e) => {
     e.preventDefault();
-    if(cart.length === 0) return;
-    
+    if (cart.length === 0) return;
+    if (isSubmitting) return; // Prevenir doble click
+
+    // Validar dirección
+    const fullAddress = `${shipping.street} ${shipping.number}, ${shipping.city}, ${shipping.state}, ${shipping.zip}`.trim();
+    if (!shipping.street || !shipping.city) {
+        toast.error("Por favor, completa la dirección de envío");
+        return;
+    }
+
+    // Validar método de pago
+    if (!selectedCardId) {
+        toast.error("Por favor, selecciona un método de pago");
+        return;
+    }
+    if (selectedCardId === 'new' && (!payment.holder || payment.card.length < 16 || !payment.expiry || payment.cvv.length < 3)) {
+        toast.error("Por favor, completa todos los datos de la tarjeta");
+        return;
+    }
+
     let cardInfo = null;
     if (selectedCardId === 'new') {
         cardInfo = {
@@ -613,20 +633,18 @@ function App() {
         };
     } else {
         const sc = savedCards.find(c => c.id === parseInt(selectedCardId));
+        if (!sc) { toast.error("Tarjeta no encontrada"); return; }
         cardInfo = { ...sc, token: sc.token || 'saved_token' };
     }
 
-    const fullAddress = `${shipping.street} ${shipping.number}, ${shipping.city}, ${shipping.state}, ${shipping.zip}`;
-
+    setIsSubmitting(true);
     const headers = { 'Content-Type': 'application/json' };
-    if (user?.token) {
-        headers['Authorization'] = `Bearer ${user.token}`;
-    }
+    if (user?.token) headers['Authorization'] = `Bearer ${user.token}`;
 
     try {
         const response = await fetch(`${API_BASE_URL}/checkout`, {
             method: 'POST',
-            headers: headers,
+            headers,
             body: JSON.stringify({
                 user: user?.email || "Invitado",
                 items: cart.map(item => ({ id: item.id, name: item.name, qty: item.qty, price: item.price })),
@@ -638,17 +656,19 @@ function App() {
         });
         if (response.ok) {
             toast.success("¡Pedido confirmado con éxito!");
-            clearCart(); 
-            navigate("/"); 
-            fetchProducts(); // Refresca stock
-            if (user.role === 'admin') {
-                refreshAdminData(); // Refresca pedidos e insights en el panel
-            }
+            clearCart();
+            navigate("/");
+            fetchProducts();
+            if (user?.role === 'admin') refreshAdminData();
         } else {
             const err = await response.json();
             toast.error(`Error: ${err.detail}`);
         }
-    } catch (err) { toast.error("Error en el servidor de pagos"); }
+    } catch (err) {
+        toast.error("Error en el servidor de pagos");
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const filteredProducts = products

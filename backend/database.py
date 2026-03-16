@@ -32,7 +32,11 @@ else:
     # Para PostgreSQL (Neon, etc.)
     engine = create_engine(
         SQLALCHEMY_DATABASE_URL,
-        pool_pre_ping=True,  # Reconectar si la conexión se corta
+        pool_size=10,          # Aumentamos el pool base
+        max_overflow=20,       # Permitimos hasta 20 conexiones extras bajo demanda
+        pool_timeout=30,       # Tiempo de espera antes de error
+        pool_pre_ping=True,    # Reconectar si la conexión se corta (evita errores tras inactividad en Neon)
+        pool_recycle=1800,     # Reciclar conexiones cada 30 min
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
