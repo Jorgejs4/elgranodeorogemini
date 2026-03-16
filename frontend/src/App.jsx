@@ -501,9 +501,9 @@ function App() {
         });
         if (res.ok) {
             const data = await res.json();
-            toast.success(data.message, { id: tId });
+            toast.success(data.message, { id: tId, duration: 6000 });
+            // No refrescamos productos porque ya no se crean nuevos
             refreshAdminData();
-            fetchProducts();
         } else {
             toast.error("Error al simular actividad", { id: tId });
         }
@@ -1106,7 +1106,7 @@ function App() {
                                    <span className="text-3xl font-serif text-amber-500 font-bold">{cartTotal.toFixed(2)}€</span>
                                </div>
                            </div>
-                           <button onClick={processPayment} className="w-full bg-gradient-to-r from-amber-600 to-yellow-500 text-black font-black py-4 rounded-xl hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-amber-900/20 uppercase tracking-widest">Confirmar y Pagar</button>
+                                                       <button onClick={processPayment} disabled={isSubmitting} className={`w-full bg-gradient-to-r from-amber-600 to-yellow-500 text-black font-black py-4 rounded-xl transition-all shadow-lg shadow-amber-900/20 uppercase tracking-widest ${isSubmitting ? 'opacity-60 cursor-not-allowed' : 'hover:scale-[1.02] active:scale-95'}`}>{isSubmitting ? 'Procesando...' : 'Confirmar y Pagar'}</button>
                            <p className="text-[10px] text-zinc-600 text-center mt-4">Pago seguro cifrado SSL de 256 bits</p>
                        </div>
                    </div>

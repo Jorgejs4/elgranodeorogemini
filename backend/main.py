@@ -391,71 +391,77 @@ def update_bulk_stock(data: BulkStockRequest, admin: models.User = Depends(check
     db.commit(); return {"message": "Stock actualizado"}
 
 @app.post("/admin/simulate-activity", tags=["Admin"])
-def simulate_activity(db: Session = Depends(get_db), admin: models.User = Depends(check_admin)):
+def simulate_activity(background_tasks: BackgroundTasks, db: Session = Depends(get_db), admin: models.User = Depends(check_admin)):
+    """Inicia una simulación de mercado en segundo plano para evitar timeouts."""
+    # Verificar que existan productos
+    if db.query(models.Product).count() == 0:
+        raise HTTPException(status_code=400, detail="No hay productos en la base de datos para simular actividad.")
+    
+    background_tasks.add_task(_run_simulation_bg)
+    return {"message": "Simulación iniciada en segundo plano. Los datos aparecerán en unos instantes."}
+
+def _run_simulation_bg():
+    """Ejecuta la generación masiva de pedidos e interacciones sin bloquear el servidor."""
     import random
-    from datetime import timedelta
-    
-    # 1. Crear un nuevo producto premium aleatorio
-    new_p = models.Product(
-        name=f"Cosecha Privada {random.randint(100,999)}",
-        description="Una joya sensorial generada por el simulador para pruebas de mercado.",
-        price=round(random.uniform(25.0, 65.0), 2),
-        stock=random.randint(20, 100),
-        category="Café en Grano",
-        image_url="https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=400"
-    )
-    db.add(new_p)
-    db.commit()
-    db.refresh(new_p)
-
-    # 2. Generar Ventas (50 Pedidos) - Distribución ANUAL
-    users = ["cliente1@test.com", "vip_coffee@aroma.es", "espresso_fan@grano.net", "invitado_demo@test.com"]
-    statuses = ["pending", "shipped"]
-    
-    # Generar 50 pedidos repartidos en el último año (365 días)
-    for _ in range(50):
-        # Distribución aleatoria en 365 días
-        days_ago = random.randint(0, 365)
-        fake_date = datetime.now() - timedelta(days=days_ago, hours=random.randint(0,23), minutes=random.randint(0,59))
-        
-        total = round(random.uniform(30.0, 200.0), 2)
-        new_order = models.Order(
-            user_email=random.choice(users),
-            total=total,
-            items_summary=f"{random.randint(1,4)}x {new_p.name}",
-            address="Av. de la Inteligencia Artificial 101, Madrid",
-            status=random.choice(statuses),
-            date=fake_date
-        )
-        db.add(new_order)
-
-    # 3. Generar Interacciones masivas para la IA (200 eventos anuales)
-    all_products = db.query(models.Product).all()
-    for _ in range(200):
-        p = random.choice(all_products)
-        days_ago = random.randint(0, 365)
-        h = random.randint(0, 23)
-        ts = datetime.now() - timedelta(days=days_ago)
-        ts = ts.replace(hour=h)
-        
-        inter = models.Interaction(
-            user_id=random.randint(1, 10),
-            product_id=p.id,
-            action_type=random.choice(["view", "add_to_cart", "purchase"]),
-            timestamp=ts
-        )
-        db.add(inter)
-
-    db.commit()
-    
-    # 4. RE-ENTRENAR IA
+    from datetime import timedelta, datetime, timezone
+    db = SessionLocal()
     try:
-        from ml_core import train_model
-        train_model(db)
-    except Exception as e:
-        logger.error(f"Error IA tras simulacion: {e}")
+        # 1. Obtener productos existentes
+        all_products = db.query(models.Product).all()
+        if not all_products:
+            return
 
-    return {"message": f"Simulación Anual: Creado {new_p.name}, 50 pedidos históricos y 200 eventos de IA repartidos en el año."}
+        users = ["cliente1@test.com", "vip_coffee@aroma.es", "espresso_fan@grano.net", "invitado_demo@test.com", "coffee_lover@madrid.es"]
+        statuses = ["pending", "shipped", "delivered"]
+        
+        # 2. Generar Ventas (50 Pedidos históricos)
+        for _ in range(50):
+            p = random.choice(all_products)
+            days_ago = random.randint(0, 365)
+            fake_date = datetime.now(timezone.utc) - timedelta(days=days_ago, hours=random.randint(0,23), minutes=random.randint(0,59))
+            
+            qty = random.randint(1, 3)
+            total = round(p.price * qty, 2)
+            
+            new_order = models.Order(
+                user_email=random.choice(users),
+                total=total,
+                items_summary=f"{qty}x {p.name}",
+                address="Av. de la Inteligencia Artificial 101, Madrid",
+                status=random.choice(statuses),
+                date=fake_date
+            )
+            db.add(new_order)
+
+        # 3. Generar Interacciones masivas para la IA (200 eventos anuales)
+        for _ in range(200):
+            p = random.choice(all_products)
+            days_ago = random.randint(0, 365)
+            h = random.randint(0, 23)
+            ts = datetime.now(timezone.utc) - timedelta(days=days_ago)
+            ts = ts.replace(hour=h)
+            
+            inter = models.Interaction(
+                user_id=random.randint(1, 10),
+                product_id=p.id,
+                action_type=random.choice(["view", "add_to_cart", "purchase"]),
+                timestamp=ts
+            )
+            db.add(inter)
+
+        db.commit()
+        
+        # 4. RE-ENTRENAR IA
+        try:
+            import ml_core
+            ml_core.train_model(db)
+        except Exception as e:
+            logger.error(f"Error IA tras simulacion bg: {e}")
+            
+    except Exception as e:
+        logger.error(f"Error en simulacion background: {e}")
+    finally:
+        db.close()
 
 @app.get("/admin/ai-insights", tags=["Admin"])
 def get_ai_insights(db: Session = Depends(get_db), admin: models.User = Depends(check_admin)):
