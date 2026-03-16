@@ -2,6 +2,16 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+import os
+from dotenv import load_dotenv
+
+# Asegurar que las variables de entorno estén cargadas antes de importar la app o módulos
+load_dotenv()
+
+# Proveer un valor por defecto solo para tests en caso de que aún no exista un .env real
+if "SECRET_KEY" not in os.environ:
+    os.environ["SECRET_KEY"] = "test_secret_key"
+
 from database import Base, get_db
 from main import app
 

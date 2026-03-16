@@ -4,8 +4,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 import os
 
-# Clave secreta desde variable de entorno
-SECRET_KEY = os.getenv("SECRET_KEY", "tu_clave_super_secreta_el_grano_de_oro")
+# Clave secreta desde variable de entorno (Lanzará error si no existe, por seguridad)
+SECRET_KEY = os.environ["SECRET_KEY"]
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
