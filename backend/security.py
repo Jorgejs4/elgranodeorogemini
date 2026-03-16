@@ -4,8 +4,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 import os
 
-# Clave secreta desde variable de entorno (Lanzará error si no existe, por seguridad)
-SECRET_KEY = os.environ["SECRET_KEY"]
+# Clave secreta desde variable de entorno (Con fallback para despliegues)
+SECRET_KEY = os.getenv("SECRET_KEY", "fallback_secret_for_local_dev_only_do_not_use_in_prod")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
