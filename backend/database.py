@@ -1,18 +1,27 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
+import logging
 
-# CONFIGURACIÓN LOCAL: Usamos SQLite por defecto para evitar instalar PostgreSQL
-# El archivo se guardará como 'elgranodeoro.db' en la carpeta backend/
-SQLALCHEMY_DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    "sqlite:///./elgranodeoro.db"
-)
+logger = logging.getLogger(__name__)
+
+# CONFIGURACIÓN DE BASE DE DATOS
+# Obtener la URL y limpiar espacios/comillas que puedan venir de variables de entorno mal configuradas
+_raw_url = os.getenv("DATABASE_URL", "sqlite:///./elgranodeoro.db")
+SQLALCHEMY_DATABASE_URL = _raw_url.strip().strip('"').strip("'")
 
 # Neon y otros proveedores a veces dan URLs con 'postgres://' (antiguo).
-# SQLAlchemy 2.x require 'postgresql://' — corregimos automáticamente.
+# SQLAlchemy 2.x requiere 'postgresql://' — corregimos automáticamente.
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# Log parcial de la URL para debug (ocultamos la contraseña)
+try:
+    _debug_url = SQLALCHEMY_DATABASE_URL[:30] + "..." if len(SQLALCHEMY_DATABASE_URL) > 30 else SQLALCHEMY_DATABASE_URL
+    logger.info(f"DATABASE_URL detectada: {_debug_url}")
+    print(f"[DB] DATABASE_URL empieza por: {SQLALCHEMY_DATABASE_URL[:20]}...")
+except Exception:
+    pass
 
 # Configuración especial para SQLite (necesaria para hilos en FastAPI)
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
@@ -20,7 +29,11 @@ if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
         SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
     )
 else:
-    engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    # Para PostgreSQL (Neon, etc.)
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        pool_pre_ping=True,  # Reconectar si la conexión se corta
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
