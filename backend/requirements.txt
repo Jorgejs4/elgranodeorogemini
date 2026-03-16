@@ -22,3 +22,4 @@ pytest-cov
 alembic
 # AI Assistant
 google-generativeai>=0.8.0
+google-auth>=2.0.0
