@@ -2,17 +2,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 
-# CONFIGURACIÓN DE BASE DE DATOS
-# En Render, usamos un Persistent Disk para que los datos sobrevivan los redeploys.
-# En local, el archivo se guarda en la carpeta backend/.
-if os.getenv("RENDER"):
-    _DB_DIR = "/opt/render/project/data"
-    os.makedirs(_DB_DIR, exist_ok=True)
-    _default_db = f"sqlite:///{_DB_DIR}/elgranodeoro.db"
-else:
-    _default_db = "sqlite:///./elgranodeoro.db"
-
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", _default_db)
+# CONFIGURACIÓN LOCAL: Usamos SQLite por defecto para evitar instalar PostgreSQL
+# El archivo se guardará como 'elgranodeoro.db' en la carpeta backend/
+SQLALCHEMY_DATABASE_URL = os.getenv(
+    "DATABASE_URL", 
+    "sqlite:///./elgranodeoro.db"
+)
 
 # Configuración especial para SQLite (necesaria para hilos en FastAPI)
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):

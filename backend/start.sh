@@ -1,14 +1,12 @@
 #!/bin/sh
 
-echo "⏳ Preparando entorno..."
-
-# Crear directorio para disco persistente (Render Persistent Disk)
-mkdir -p /opt/render/project/data
+echo "⏳ Esperando 10 segundos a que la base de datos despierte..."
+sleep 10
 
 # Ejecutar migraciones de Alembic
 alembic upgrade head
 
-# 1. Ejecutamos el script de entrenamiento
+# 1. Ejecutamos el script de entrenamiento que acabamos de crear
 python train.py
 
 # 2. Una vez termine, arrancamos la API
