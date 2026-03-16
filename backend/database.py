@@ -9,6 +9,11 @@ SQLALCHEMY_DATABASE_URL = os.getenv(
     "sqlite:///./elgranodeoro.db"
 )
 
+# Neon y otros proveedores a veces dan URLs con 'postgres://' (antiguo).
+# SQLAlchemy 2.x require 'postgresql://' — corregimos automáticamente.
+if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 # Configuración especial para SQLite (necesaria para hilos en FastAPI)
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
     engine = create_engine(
