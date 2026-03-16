@@ -1362,9 +1362,9 @@ function AuthModal({ onClose, onLogin }) {
             window.google.accounts.id.renderButton(googleContainerRef.current, {
                 theme: 'filled_black',
                 size: 'large',
-                width: '100%',
+                width: 340,
                 text: 'continue_with',
-                shape: 'pill'
+                shape: 'rectangular'
             });
         }
     }, [onLogin]);
@@ -1375,7 +1375,7 @@ function AuthModal({ onClose, onLogin }) {
                 <h2 className="text-3xl font-serif text-amber-500 mb-6 text-center font-bold italic">{isReg?"Registro":"Acceso"}</h2>
                 
                 {/* Google Sign-In Button */}
-                <div ref={googleContainerRef} className="flex justify-center mb-4"></div>
+                <div ref={googleContainerRef} className="w-full mb-4" style={{minHeight: '44px'}}></div>
                 {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
                     <div className="flex items-center gap-4 mb-4">
                         <div className="h-px bg-zinc-800 flex-1"></div>
