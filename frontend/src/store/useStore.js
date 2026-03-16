@@ -10,6 +10,7 @@ const useStore = create(
       // --- ESTADO ---
       user: null,
       products: [],
+      isLoadingProducts: true,
       recommendations: [],
       cart: [],
       wishlist: [],
@@ -17,7 +18,12 @@ const useStore = create(
       aiInsights: null,
 
       // --- ACCIONES DE USUARIO ---
-      setUser: (user) => set({ user }),
+      setUser: (user) => {
+        set({ user });
+        if (user) {
+          get().fetchCart(user.token);
+        }
+      },
       logout: () => {
         set({ user: null, cart: [], wishlist: [] });
         localStorage.removeItem('user');
@@ -27,16 +33,54 @@ const useStore = create(
       setProducts: (products) => set({ products }),
       setRecommendations: (recommendations) => set({ recommendations }),
       fetchProducts: async () => {
+        set({ isLoadingProducts: true });
         try {
           const res = await fetch(`${API_BASE_URL}/products/?skip=0&limit=100`);
           const data = await res.json();
-          set({ products: Array.isArray(data) ? data : [] });
+          set({ products: Array.isArray(data) ? data : [], isLoadingProducts: false });
         } catch (err) {
           console.error('Error fetching products:', err);
+          set({ isLoadingProducts: false });
         }
       },
 
       // --- ACCIONES DE CARRITO ---
+      fetchCart: async (token) => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/cart`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            // Data comes as [{ product: {...}, quantity: 2 }]
+            // We need to map it to the store format: [{ id, name, price, qty }]
+            const mappedCart = data.map(item => ({
+              ...item.product,
+              qty: item.quantity
+            }));
+            set({ cart: mappedCart });
+          }
+        } catch (err) {
+          console.error("Error cargando carrito", err);
+        }
+      },
+      syncCart: async () => {
+        const { user, cart } = get();
+        if (!user || !user.token) return; // Only sync if logged in
+        
+        const payload = {
+          items: cart.map(c => ({ product_id: c.id, quantity: c.qty }))
+        };
+        
+        fetch(`${API_BASE_URL}/cart/sync`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${user.token}`
+          },
+          body: JSON.stringify(payload)
+        }).catch(e => console.error("Error syncing cart", e));
+      },
       addToCart: (product) => {
         const { cart } = get();
         const exist = cart.find((x) => x.id === product.id);
@@ -49,6 +93,9 @@ const useStore = create(
         } else {
           set({ cart: [...cart, { ...product, qty: 1 }] });
         }
+        
+        get().syncCart(); // Trigger background sync
+        
         // Tracking opcional aquí
         fetch(`${API_BASE_URL}/track`, { 
             method: 'POST', 
@@ -69,8 +116,12 @@ const useStore = create(
             ),
           });
         }
+        get().syncCart(); // Trigger background sync
       },
-      clearCart: () => set({ cart: [] }),
+      clearCart: () => {
+        set({ cart: [] });
+        get().syncCart();
+      },
 
       // --- ACCIONES DE WISHLIST ---
       toggleWishlist: (product) => {

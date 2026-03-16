@@ -94,3 +94,16 @@ class Review(Base):
     date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     product = relationship("Product", back_populates="reviews")
+
+# --- 7. Tabla de Carrito de Compras ---
+class CartItem(Base):
+    __tablename__ = "cart_items"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    quantity = Column(Integer, default=1)
+    
+    user = relationship("User")
+    product = relationship("Product")

@@ -99,6 +99,25 @@ const ProductReviews = ({ productId }) => {
   );
 };
 
+// --- COMPONENTE SKELETON (CARGA PREMIUM) ---
+const ProductSkeleton = () => (
+  <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] overflow-hidden shadow-xl animate-pulse flex flex-col h-[400px]">
+    <div className="h-48 bg-zinc-800/50 w-full relative overflow-hidden">
+      <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/5 text-transparent to-transparent"></div>
+    </div>
+    <div className="p-6 flex flex-col justify-between flex-1">
+      <div className="space-y-3">
+        <div className="flex justify-between">
+          <div className="h-6 bg-zinc-800/50 w-1/3 rounded"></div>
+          <div className="h-6 bg-amber-500/10 w-20 rounded-full"></div>
+        </div>
+        <div className="h-8 bg-zinc-800/50 w-3/4 rounded mt-2"></div>
+      </div>
+      <div className="h-12 bg-zinc-800/50 w-full rounded-xl mt-4"></div>
+    </div>
+  </div>
+);
+
 // --- COMPONENTE SELECTOR DE IDIOMAS ---
 const LanguageSelector = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -341,7 +360,7 @@ function App() {
   const location = useLocation();
   const { 
     user, setUser, logout, 
-    products, fetchProducts, recommendations, setRecommendations,
+    products, fetchProducts, isLoadingProducts, recommendations, setRecommendations,
     cart, addToCart, removeFromCart, clearCart,
     wishlist, toggleWishlist,
     orders, setOrders, aiInsights, setAiInsights
@@ -749,7 +768,10 @@ function App() {
                        </div>
                        <h2 className="text-2xl font-serif text-white mb-6">Resultados para "{search}"</h2>
                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-                           {filteredProducts.map(p => <ProductCard key={p.id} product={p} onClick={() => navigate(`/product/${p.id}`)} onAdd={addToCart} onBuy={() => { addToCart(p); navigate('/checkout'); }} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} />)}
+                           {isLoadingProducts 
+                               ? Array(4).fill(0).map((_, i) => <ProductSkeleton key={i} />)
+                               : filteredProducts.map(p => <ProductCard key={p.id} product={p} onClick={() => navigate(`/product/${p.id}`)} onAdd={addToCart} onBuy={() => { addToCart(p); navigate('/checkout'); }} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} />)
+                           }
                        </div>
                    </div>
                ) : (
@@ -798,15 +820,33 @@ function App() {
                                    </select>
                                </div>
                            </div>
-                           {recommendations.length > 0 && category === 'all' && (
+                           {/* DESTACADOS O RECOMENDADOS */}
+                           {isLoadingProducts ? (
                                <section className="mb-16">
                                    <h2 className="text-2xl font-serif text-[#d4af37] mb-6 flex items-center gap-4 italic">{user ? "Para ti" : "Destacados"}<div className="h-px bg-amber-900/30 flex-1"></div></h2>
                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-                                       {recommendations.map(p => <ProductCard key={p.id} product={p} onClick={() => navigate(`/product/${p.id}`)} onAdd={addToCart} onBuy={() => { addToCart(p); navigate('/checkout'); }} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} isRecommended={true} />)}
+                                        {Array(4).fill(0).map((_, i) => <ProductSkeleton key={`rec_skel_${i}`} />)}
+                                   </div>
+                               </section>
+                           ) : recommendations.length > 0 && category === 'all' && (
+                               <section className="mb-16">
+                                   <h2 className="text-2xl font-serif text-[#d4af37] mb-6 flex items-center gap-4 italic">{user ? "Para ti" : "Destacados"}<div className="h-px bg-amber-900/30 flex-1"></div></h2>
+                                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                                        {recommendations.map(p => <ProductCard key={p.id} product={p} onClick={() => navigate(`/product/${p.id}`)} onAdd={addToCart} onBuy={() => { addToCart(p); navigate('/checkout'); }} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} isRecommended={true} />)}
                                    </div>
                                </section>
                            )}
-                           <section><h2 className="text-2xl font-serif text-[#d4af37] mb-6 flex items-center gap-4 italic">Catálogo <div className="h-px bg-zinc-800 flex-1"></div></h2><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">{filteredProducts.map(p => <ProductCard key={p.id} product={p} onClick={() => navigate(`/product/${p.id}`)} onAdd={addToCart} onBuy={() => { addToCart(p); navigate('/checkout'); }} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} />)}</div></section>
+
+                           {/* CATÁLOGO GENERAL */}
+                           <section>
+                               <h2 className="text-2xl font-serif text-[#d4af37] mb-6 flex items-center gap-4 italic">Catálogo <div className="h-px bg-zinc-800 flex-1"></div></h2>
+                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                                    {isLoadingProducts 
+                                        ? Array(8).fill(0).map((_, i) => <ProductSkeleton key={`cat_skel_${i}`} />)
+                                        : filteredProducts.map(p => <ProductCard key={p.id} product={p} onClick={() => navigate(`/product/${p.id}`)} onAdd={addToCart} onBuy={() => { addToCart(p); navigate('/checkout'); }} isLiked={wishlist.find(w=>w.id===p.id)} onLike={toggleWishlist} />)
+                                    }
+                               </div>
+                           </section>
                        </div>
                    </>
                )}

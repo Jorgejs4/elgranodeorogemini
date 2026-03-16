@@ -85,3 +85,19 @@ class ReviewResponse(ReviewCreate):
 
 
 InteractionResponse = Interaction
+
+# --- ESQUEMAS DEL CARRITO ---
+class CartItemBase(BaseModel):
+    product_id: int
+    quantity: int
+
+class CartItemCreate(CartItemBase):
+    pass
+
+class CartItemResponse(CartItemBase):
+    id: int
+    product: ProductResponse
+    model_config = ConfigDict(from_attributes=True)
+
+class SyncCartRequest(BaseModel):
+    items: List[CartItemCreate]

@@ -1,6 +1,7 @@
 import toast from 'react-hot-toast';
+import PropTypes from 'prop-types';
 
-const ProductCard = ({ product, isRecommended, onAdd, onBuy, onClick, isLiked, onLike }) => {
+const ProductCard = ({ product, isRecommended, onAdd, onClick, isLiked, onLike }) => {
   const handleAddToCart = (e) => {
     e.stopPropagation();
     if (onAdd) onAdd(product);
@@ -69,6 +70,23 @@ const ProductCard = ({ product, isRecommended, onAdd, onBuy, onClick, isLiked, o
       </div>
     </div>
   );
+};
+
+ProductCard.propTypes = {
+    product: PropTypes.shape({
+        id: PropTypes.number.isRequired,
+        name: PropTypes.string.isRequired,
+        category: PropTypes.string.isRequired,
+        price: PropTypes.number.isRequired,
+        stock: PropTypes.number.isRequired,
+        image_url: PropTypes.string,
+    }).isRequired,
+    isRecommended: PropTypes.bool,
+    onAdd: PropTypes.func,
+    onBuy: PropTypes.func,
+    onClick: PropTypes.func,
+    isLiked: PropTypes.bool,
+    onLike: PropTypes.func
 };
 
 export default ProductCard;

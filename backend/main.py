@@ -477,6 +477,29 @@ def post_review(review: schemas.ReviewCreate, db: Session = Depends(get_db)):
     db.refresh(db_review)
     return db_review
 
+# --- ENDPOINTS DE CARRITO PERSISTENTE ---
+@app.get("/cart", response_model=List[schemas.CartItemResponse], tags=["Carrito"])
+def get_cart(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Obtiene el carrito guardado del usuario."""
+    return db.query(models.CartItem).filter(models.CartItem.user_id == user.id).all()
+
+@app.post("/cart/sync", tags=["Carrito"])
+def sync_cart(data: schemas.SyncCartRequest, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Sobrescribe el carrito del usuario en la BD con el estado actual del frontend."""
+    # 1. Eliminar el carrito anterior
+    db.query(models.CartItem).filter(models.CartItem.user_id == user.id).delete()
+    
+    # 2. Guardar los nuevos items
+    new_items = []
+    for item in data.items:
+        new_items.append(models.CartItem(user_id=user.id, product_id=item.product_id, quantity=item.quantity))
+    
+    if new_items:
+        db.add_all(new_items)
+        
+    db.commit()
+    return {"message": "Carrito sincronizado exitosamente"}
+
 # =============================================
 # --- PAGOS CON STRIPE ---
 # =============================================
